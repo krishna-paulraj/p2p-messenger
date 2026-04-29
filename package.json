@@ -1,0 +1,17 @@
+{
+  "name": "p2p-messenger",
+  "version": "0.0.1",
+  "private": true,
+  "packageManager": "pnpm@10.28.1",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev:signal": "pnpm --filter signaling-server dev",
+    "dev:cli": "pnpm --filter @p2p/cli dev",
+    "chat": "pnpm --filter @p2p/cli start"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "tsx": "^4.19.2",
+    "@types/node": "^22.10.0"
+  }
+}
