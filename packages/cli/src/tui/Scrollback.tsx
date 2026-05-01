@@ -37,9 +37,9 @@ function LogLine({ entry, alias }: { entry: LogEntry; alias: string }) {
   if (entry.kind === "system") {
     return (
       <Text>
-        <Text color="gray">{time}</Text>
-        <Text color="gray">{"  "}— </Text>
-        <Text color="gray">{entry.text}</Text>
+        <Text dimColor>{time}</Text>
+        <Text dimColor>{"  — "}</Text>
+        <Text>{entry.text}</Text>
       </Text>
     );
   }
@@ -47,9 +47,9 @@ function LogLine({ entry, alias }: { entry: LogEntry; alias: string }) {
   if (entry.kind === "presence") {
     return (
       <Text>
-        <Text color="gray">{time}</Text>
-        <Text color="green">{"  "}● </Text>
-        <Text color="gray">{entry.text}</Text>
+        <Text dimColor>{time}</Text>
+        <Text color="greenBright">{"  ● "}</Text>
+        <Text>{entry.text}</Text>
       </Text>
     );
   }
@@ -57,7 +57,7 @@ function LogLine({ entry, alias }: { entry: LogEntry; alias: string }) {
   if (entry.kind === "error") {
     return (
       <Text>
-        <Text color="gray">{time}</Text>
+        <Text dimColor>{time}</Text>
         <Text color="redBright">{"  ✗ "}</Text>
         <Text color="redBright">{entry.text}</Text>
       </Text>
@@ -67,9 +67,9 @@ function LogLine({ entry, alias }: { entry: LogEntry; alias: string }) {
   if (entry.kind === "group-event") {
     return (
       <Text>
-        <Text color="gray">{time}</Text>
-        <Text color="yellow">{"  ⚐ "}</Text>
-        <Text color="yellow">{entry.text}</Text>
+        <Text dimColor>{time}</Text>
+        <Text color="yellowBright">{"  ⚐ "}</Text>
+        <Text color="yellowBright">{entry.text}</Text>
       </Text>
     );
   }
@@ -87,14 +87,14 @@ function LogLine({ entry, alias }: { entry: LogEntry; alias: string }) {
 
   return (
     <Text>
-      <Text color="gray">{time}</Text>
+      <Text dimColor>{time}</Text>
       <Text>{"  "}</Text>
       <Text color={senderColor} bold={isSelf}>
         {pad(senderName, 12)}
       </Text>
-      <Text color="white">{" "}</Text>
+      <Text>{" "}</Text>
       <Text>{entry.text}</Text>
-      {sourceTag ? <Text color="gray">{sourceTag}</Text> : null}
+      {sourceTag ? <Text dimColor>{sourceTag}</Text> : null}
     </Text>
   );
 }
@@ -103,21 +103,22 @@ function EmptyHint({ state, active }: { state: AppState; active?: ContextRef }) 
   if (!active || active.kind === "system") {
     return (
       <Box flexDirection="column" paddingX={1}>
-        <Text color="gray">Welcome, {state.alias}.</Text>
-        <Text color="gray">
-          Type a slash command to get started: <Text color="cyan">/help</Text>,{" "}
-          <Text color="cyan">/contact list</Text>, <Text color="cyan">/whoami</Text>.
+        <Text>Welcome, {state.alias}.</Text>
+        <Text>
+          Type a slash command to get started:{" "}
+          <Text color="cyanBright">/help</Text>,{" "}
+          <Text color="cyanBright">/contact list</Text>,{" "}
+          <Text color="cyanBright">/whoami</Text>.
         </Text>
-        <Text color="gray">
-          Use <Text color="cyan">/dial &lt;peer&gt;</Text> to start a P2P connection or{" "}
-          <Text color="cyan">/sendto &lt;peer&gt; &lt;msg&gt;</Text> for a relay-routed message.
+        <Text dimColor>
+          Use /dial &lt;peer&gt; for a P2P connection or /sendto &lt;peer&gt; &lt;msg&gt; via relay.
         </Text>
       </Box>
     );
   }
   return (
     <Box paddingX={1}>
-      <Text color="gray">(no messages yet — type to send)</Text>
+      <Text dimColor>(no messages yet — type to send)</Text>
     </Box>
   );
 }

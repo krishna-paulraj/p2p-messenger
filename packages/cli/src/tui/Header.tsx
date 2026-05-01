@@ -11,7 +11,7 @@ export function Header({ state }: { state: AppState }) {
   return (
     <Box
       borderStyle="round"
-      borderColor="gray"
+      borderColor="cyan"
       paddingX={1}
       justifyContent="space-between"
     >
@@ -20,21 +20,21 @@ export function Header({ state }: { state: AppState }) {
           {state.alias}
         </Text>
         {state.npub ? (
-          <Text color="gray">
+          <Text dimColor>
             {"  "}
             {npubShort}
           </Text>
         ) : null}
         {pubkeyShort ? (
-          <Text color="gray">
+          <Text dimColor>
             {"  "}({pubkeyShort})
           </Text>
         ) : null}
       </Text>
       <Text>
-        <Text color="gray">{state.signalDescription}</Text>
+        <Text dimColor>{state.signalDescription}</Text>
         {total > 0 ? (
-          <Text color={okRelays === total ? "greenBright" : "yellow"}>
+          <Text color={okRelays === total ? "greenBright" : "yellowBright"}>
             {"  "}● {okRelays}/{total} relays
           </Text>
         ) : null}

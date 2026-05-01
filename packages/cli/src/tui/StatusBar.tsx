@@ -14,24 +14,25 @@ export function StatusBar({
 
   // Connection / online indicator for active peer
   let badge = "";
-  let badgeColor: "greenBright" | "yellow" | "gray" = "gray";
+  let badgeColor: "greenBright" | "yellowBright" | "white" = "white";
+  let badgeDim = false;
   if (state.active?.kind === "peer") {
     if (state.connectedPeers.has(state.active.pubkey)) {
       badge = "p2p";
       badgeColor = "greenBright";
     } else if (state.online.get(state.active.pubkey)) {
       badge = "relay";
-      badgeColor = "yellow";
+      badgeColor = "yellowBright";
     } else {
       badge = "offline";
-      badgeColor = "gray";
+      badgeDim = true;
     }
   } else if (state.active?.kind === "group") {
     badge = "group";
-    badgeColor = "yellow";
+    badgeColor = "yellowBright";
   } else {
     badge = "system";
-    badgeColor = "gray";
+    badgeDim = true;
   }
 
   // Window list — short labels with unread counts
@@ -46,18 +47,13 @@ export function StatusBar({
     state.invites.length > 0 ? ` ✉ ${state.invites.length} invite(s)` : "";
 
   return (
-    <Box
-      borderStyle="round"
-      borderColor="gray"
-      paddingX={1}
-      flexDirection="column"
-    >
+    <Box borderStyle="round" borderColor="cyan" paddingX={1} flexDirection="column">
       <Box justifyContent="space-between">
         <Text>
-          <Text color={badgeColor} bold>
+          <Text color={badgeColor} dimColor={badgeDim} bold>
             ● {badge}
           </Text>
-          <Text color="white">
+          <Text>
             {"  "}
             {activeKind === "group" ? "#" : activeKind === "peer" ? "→ " : ""}
             {activeLabel}
@@ -66,14 +62,14 @@ export function StatusBar({
         {invitesBadge ? <Text color="yellowBright">{invitesBadge}</Text> : null}
       </Box>
       <Box>
-        <Text color="gray">windows: </Text>
+        <Text dimColor>windows: </Text>
         {windowLabels.map((w, i) => (
           <Text key={i}>
-            <Text color={w.isActive ? "cyanBright" : "gray"} bold={w.isActive}>
+            <Text color={w.isActive ? "cyanBright" : undefined} dimColor={!w.isActive} bold={w.isActive}>
               {w.label}
             </Text>
             {w.unread ? <Text color="yellowBright">{w.unread}</Text> : null}
-            {i < windowLabels.length - 1 ? <Text color="gray">{"  "}</Text> : null}
+            {i < windowLabels.length - 1 ? <Text dimColor>{"  "}</Text> : null}
           </Text>
         ))}
       </Box>
