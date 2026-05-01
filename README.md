@@ -8,7 +8,7 @@ A serverless, end-to-end encrypted messenger that combines **WebRTC for low-late
 - [x] **Phase 1.5** — Nostr-relay signaling (NIP-44 + NIP-59 gift wrap) _(default)_
 - [x] **Phase 2** — Discovery via Nostr presence events + NIP-05 + local contacts
 - [x] **Phase 3** — NIP-17 store-and-forward offline delivery with vector clocks
-- [ ] Phase 4 — group chats (Sender Keys)
+- [x] **Phase 4** — group chats with Signal-style Sender Keys (HKDF chain ratchet, member-leave rotation)
 - [ ] Phase 5 — Double Ratchet forward secrecy
 - [ ] Phase 6 — file transfer over the same protocol
 
@@ -91,6 +91,35 @@ pnpm chat --id bob --signal nostr://localhost:7777
 # bob sees: alice> ping while you were out (via relay)
 ```
 
+### Group chat demo
+
+```bash
+# in alice's session
+/group create trio
+/group invite <bob_npub>
+/group invite <charlie_npub>
+
+# in bob's session, after the invite arrives
+/group invites           # list pending
+/group accept <id-prefix>
+
+# anyone in the group, with the group focused (auto on create/accept)
+hello team               # broadcast to everyone
+
+# typed lines now go to the group; press /group exit to revert to 1:1
+```
+
+Group internals:
+- Each member holds their own **chain key** (32-byte HKDF seed) and advances it
+  on every send. The chain key is rotated whenever a member leaves, providing
+  forward secrecy on departure (a removed member cannot decrypt subsequent
+  messages even if they retained the prior chain key).
+- Out-of-order delivery is handled by deriving and caching skipped message
+  keys up to a bounded `MAX_SKIP=1000`.
+- Group control + data both ride on a single application kind (`KINDS.P2P_GROUP`)
+  inside NIP-59 gift wraps, type-discriminated by a JSON `type` field. The
+  relay sees only "kind 1059 from someone to someone" — same as a 1:1 chat.
+
 ## Cryptographic primitives
 
 | Layer | Algorithm | Library |
@@ -100,6 +129,7 @@ pnpm chat --id bob --signal nostr://localhost:7777
 | Data-channel payload | XChaCha20-Poly1305 (24-byte nonce, AEAD) | `@noble/ciphers` |
 | Nostr DM payload | NIP-44 v2 (XChaCha20 + HMAC-SHA256) | `nostr-tools/nip44` |
 | Sender anonymity | NIP-59 gift wrap (rumor → seal → wrap) | `nostr-tools/nip59` |
+| Group payload | Sender Keys: HKDF-SHA256 chain ratchet → XChaCha20-Poly1305 (AAD-bound to groupId+sender+epoch+counter) | `@noble/hashes`, `@noble/ciphers` |
 | Hashing | SHA-256, BLAKE3-ready | `@noble/hashes` |
 
 ## Security & threat model
@@ -110,6 +140,8 @@ What the design protects:
 - **Sender anonymity from relays** — NIP-59 gift wrap (kind 1059) replaces the sender pubkey with a one-time ephemeral key. Relays see only “someone is sending kind 1059 events to recipient X.”
 - **Replay protection** — persistent dedup ring on event id, vector-clock causal ordering.
 - **At-rest secret keys** — files written with `chmod 0600`, parent directory `0700`. Permission drift is detected and re-tightened on load.
+- **Forward secrecy within a group sender chain** — every group message uses a fresh HKDF-derived message key; chain key advances and the previous one is overwritten. Stealing today's chain key does not decrypt yesterday's messages from that sender.
+- **Forward secrecy on member departure** — when a member leaves, every remaining member rotates to a new chain seed (epoch++) and redistributes via pairwise NIP-17. The departed member's stored peer-chain is at the old epoch, so messages encrypted at the new epoch are unreadable.
 
 What the design does **not** protect (yet):
 
@@ -169,7 +201,8 @@ pnpm -w run test:phase15    Nostr-signaling WebRTC handshake
 pnpm -w run test:phase2     presence + alias-resolution
 pnpm -w run test:phase3     offline delivery + dedup + vector clocks (causal order)
 pnpm -w run test:replay     stale-signaling replay regression
-pnpm -w run test:nostr      runs phase 1.5 → 3 + replay sequentially
+pnpm -w run test:phase4     3-member group + Sender Keys + member-leave rotation
+pnpm -w run test:nostr      runs all of the above sequentially
 ```
 
 ## Configuration
@@ -193,4 +226,4 @@ CLI flags:
 
 ## Resume bullet
 
-> Built a hybrid P2P/relay encrypted messenger in Node.js + TypeScript: WebRTC data channels with X25519 + XChaCha20-Poly1305 session keys for low-latency online traffic, layered atop a Nostr-relay control plane (NIP-44 + NIP-59 gift-wrapped signaling, presence-based discovery, NIP-17 store-and-forward) for offline delivery and discovery without any owned infrastructure. Multi-relay fan-out with per-subscription dedup, vector-clock causal ordering, persistent identity (mode 0600), and an integration test suite covering all four phases.
+> Built a hybrid P2P/relay encrypted messenger in Node.js + TypeScript: WebRTC data channels with X25519 + XChaCha20-Poly1305 session keys for low-latency online traffic, layered atop a Nostr-relay control plane (NIP-44 + NIP-59 gift-wrapped signaling, presence-based discovery, NIP-17 store-and-forward) for offline delivery and discovery without any owned infrastructure. Group chats use Signal-style Sender Keys with an HKDF chain ratchet, AAD-bound XChaCha20-Poly1305 ciphertexts, bounded out-of-order delivery, and forward-secret key rotation on member departure. Multi-relay fan-out with per-subscription dedup, vector-clock causal ordering, persistent identity (mode 0600), and an integration test suite covering all five phases.

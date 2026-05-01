@@ -17,7 +17,8 @@
     "test:phase2": "tsx packages/core/test/discovery.test.ts",
     "test:phase3": "tsx packages/core/test/offline-delivery.test.ts",
     "test:replay": "tsx packages/core/test/restart-replay.test.ts",
-    "test:nostr": "pnpm test:phase15 && pnpm test:phase2 && pnpm test:phase3 && pnpm test:replay"
+    "test:phase4": "tsx packages/core/test/group.test.ts",
+    "test:nostr": "pnpm -w run test:phase15 && pnpm -w run test:phase2 && pnpm -w run test:phase3 && pnpm -w run test:replay && pnpm -w run test:phase4"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
