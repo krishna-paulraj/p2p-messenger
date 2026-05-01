@@ -1,11 +1,18 @@
-import { Peer, initCrypto } from "./index.js";
+/**
+ * Phase 1 demo (legacy WS signaling) — proves the transport refactor preserves
+ * behavior. Run with the WS signaling server up on :8080.
+ */
+import { Peer, initCrypto, WebSocketSignaling } from "./index.js";
 
 async function main() {
   await initCrypto();
   const url = "ws://localhost:8080";
 
-  const alice = new Peer({ signalingUrl: url, selfId: "alice" });
-  const bob = new Peer({ signalingUrl: url, selfId: "bob" });
+  const aliceTransport = new WebSocketSignaling({ url, selfId: "alice" });
+  const bobTransport = new WebSocketSignaling({ url, selfId: "bob" });
+
+  const alice = new Peer({ transport: aliceTransport });
+  const bob = new Peer({ transport: bobTransport });
 
   const received: { from: string; text: string }[] = [];
   alice.onMessage((from, text) => received.push({ from, text }));
@@ -29,8 +36,8 @@ async function main() {
 
   console.log("received messages:", received);
 
-  alice.close();
-  bob.close();
+  await alice.close();
+  await bob.close();
 
   const ok =
     received.some((m) => m.from === "bob" && m.text === "hello from bob") &&
@@ -40,7 +47,7 @@ async function main() {
     console.error("FAIL: expected messages not received");
     process.exit(1);
   }
-  console.log("OK: round-trip encrypted exchange succeeded");
+  console.log("OK: ws transport round-trip succeeded");
   process.exit(0);
 }
 

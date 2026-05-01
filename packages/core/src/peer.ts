@@ -9,37 +9,44 @@ import {
   type SessionKeys,
   toBase64,
 } from "./crypto.js";
-import { SignalingClient, type SignalingEvent } from "./signaling.js";
+import type {
+  IncomingSignal,
+  SignalPayload,
+  SignalingTransport,
+} from "./transport.js";
+import { makeLogger } from "./util/logger.js";
 
 const { RTCPeerConnection } = wrtc;
 
-type SignalPayload =
-  | { kind: "offer"; sdp: string; pubKey: string }
-  | { kind: "answer"; sdp: string; pubKey: string }
-  | { kind: "ice"; candidate: RTCIceCandidateInit };
+const log = makeLogger("peer");
 
 export type PeerOptions = {
-  signalingUrl: string;
-  selfId: string;
+  /** Pluggable signaling transport (WebSocket or Nostr). */
+  transport: SignalingTransport;
   iceServers?: RTCIceServer[];
 };
 
 const DEFAULT_ICE: RTCIceServer[] = [{ urls: "stun:stun.l.google.com:19302" }];
 
 export class Peer {
-  private signaling: SignalingClient;
-  private keypair: KeyPair = generateKeyPair();
+  /** This peer's id on the active transport (e.g. nostr pubkey or "alice"). */
+  readonly selfId: string;
+  private transport: SignalingTransport;
+  private sessionKeypair: KeyPair = generateKeyPair();
   private connections = new Map<string, ConnectionState>();
   private messageHandlers = new Set<(from: string, text: string) => void>();
   private connectHandlers = new Set<(peerId: string) => void>();
+  private opts: PeerOptions;
 
-  constructor(private opts: PeerOptions) {
-    this.signaling = new SignalingClient(opts.signalingUrl, opts.selfId);
-    this.signaling.on((e) => this.onSignaling(e));
+  constructor(opts: PeerOptions) {
+    this.opts = opts;
+    this.transport = opts.transport;
+    this.selfId = opts.transport.selfId;
+    this.transport.onSignal((s) => this.onSignaling(s));
   }
 
   async start(): Promise<void> {
-    await this.signaling.register();
+    await this.transport.start();
   }
 
   onMessage(fn: (from: string, text: string) => void): () => void {
@@ -59,11 +66,11 @@ export class Peer {
 
     const offer = await state.pc.createOffer();
     await state.pc.setLocalDescription(offer);
-    this.signaling.send(peerId, {
+    await this.transport.send(peerId, {
       kind: "offer",
       sdp: offer.sdp ?? "",
-      pubKey: toBase64(this.keypair.publicKey),
-    } satisfies SignalPayload);
+      pubKey: toBase64(this.sessionKeypair.publicKey),
+    });
   }
 
   send(peerId: string, text: string): void {
@@ -76,10 +83,23 @@ export class Peer {
     state.dc.send(ab);
   }
 
-  close(): void {
+  connectedPeers(): string[] {
+    const out: string[] = [];
+    for (const [id, s] of this.connections) {
+      if (s.dc && s.dc.readyState === "open" && s.session) out.push(id);
+    }
+    return out;
+  }
+
+  isConnected(peerId: string): boolean {
+    const s = this.connections.get(peerId);
+    return !!(s && s.dc && s.dc.readyState === "open" && s.session);
+  }
+
+  async close(): Promise<void> {
     for (const s of this.connections.values()) s.pc.close();
     this.connections.clear();
-    this.signaling.close();
+    await this.transport.close();
   }
 
   private ensureConnection(peerId: string, initiator: boolean): ConnectionState {
@@ -92,10 +112,9 @@ export class Peer {
 
     pc.onicecandidate = (ev) => {
       if (ev.candidate) {
-        this.signaling.send(peerId, {
-          kind: "ice",
-          candidate: ev.candidate.toJSON(),
-        } satisfies SignalPayload);
+        this.transport
+          .send(peerId, { kind: "ice", candidate: ev.candidate.toJSON() })
+          .catch((err) => log.warn("ICE send failed", { peerId, err: String(err) }));
       }
     };
 
@@ -120,53 +139,97 @@ export class Peer {
         const text = decrypt(buf, state.session.rx);
         for (const h of this.messageHandlers) h(state.peerId, text);
       } catch (err) {
-        console.error(`[${state.peerId}] decrypt failed:`, err);
+        log.error("decrypt failed", { peerId: state.peerId, err: String(err) });
       }
     };
   }
 
-  private async onSignaling(e: SignalingEvent): Promise<void> {
-    if (e.type !== "signal") return;
-    const payload = e.payload as SignalPayload;
+  private async onSignaling(signal: IncomingSignal): Promise<void> {
+    const { from, payload } = signal;
 
-    if (payload.kind === "offer") {
-      const state = this.ensureConnection(e.from, false);
-      this.installSession(state, payload.pubKey);
-      await state.pc.setRemoteDescription({ type: "offer", sdp: payload.sdp });
-      const answer = await state.pc.createAnswer();
-      await state.pc.setLocalDescription(answer);
-      this.signaling.send(e.from, {
-        kind: "answer",
-        sdp: answer.sdp ?? "",
-        pubKey: toBase64(this.keypair.publicKey),
-      } satisfies SignalPayload);
-      return;
-    }
+    try {
+      if (payload.kind === "offer") {
+        // If we already have a stable (or otherwise non-handshaking) PC for this
+        // peer, treat the new offer as a request to renegotiate: tear down and
+        // start fresh. This is a simplified "perfect negotiation" — sufficient
+        // because our app's signaling is symmetric and infrequent.
+        const existing = this.connections.get(from);
+        if (existing && existing.pc.signalingState === "stable") {
+          log.info("renegotiation offer received — closing existing PC", {
+            peerId: from,
+            prevSignalingState: existing.pc.signalingState,
+          });
+          existing.pc.close();
+          this.connections.delete(from);
+        } else if (existing && existing.pc.signalingState !== "have-remote-offer") {
+          // Mid-handshake collision — ignore the duplicate. The original
+          // negotiation either completes or fails on its own.
+          log.debug("ignoring offer during in-flight handshake", {
+            peerId: from,
+            signalingState: existing.pc.signalingState,
+          });
+          return;
+        }
 
-    if (payload.kind === "answer") {
-      const state = this.connections.get(e.from);
-      if (!state) return;
-      this.installSession(state, payload.pubKey);
-      await state.pc.setRemoteDescription({ type: "answer", sdp: payload.sdp });
-      return;
-    }
-
-    if (payload.kind === "ice") {
-      const state = this.connections.get(e.from);
-      if (!state) return;
-      try {
-        await state.pc.addIceCandidate(payload.candidate);
-      } catch (err) {
-        console.error("addIceCandidate failed", err);
+        const state = this.ensureConnection(from, false);
+        this.installSession(state, payload.pubKey);
+        await state.pc.setRemoteDescription({ type: "offer", sdp: payload.sdp });
+        const answer = await state.pc.createAnswer();
+        await state.pc.setLocalDescription(answer);
+        await this.transport.send(from, {
+          kind: "answer",
+          sdp: answer.sdp ?? "",
+          pubKey: toBase64(this.sessionKeypair.publicKey),
+        });
+        return;
       }
+
+      if (payload.kind === "answer") {
+        const state = this.connections.get(from);
+        if (!state) {
+          log.debug("answer for unknown peer", { peerId: from });
+          return;
+        }
+        if (state.pc.signalingState !== "have-local-offer") {
+          log.warn("ignoring answer in unexpected state", {
+            peerId: from,
+            signalingState: state.pc.signalingState,
+          });
+          return;
+        }
+        this.installSession(state, payload.pubKey);
+        await state.pc.setRemoteDescription({ type: "answer", sdp: payload.sdp });
+        return;
+      }
+
+      if (payload.kind === "ice") {
+        const state = this.connections.get(from);
+        if (!state) return;
+        // ICE candidates must arrive after remoteDescription is set.
+        if (!state.pc.remoteDescription) {
+          log.debug("queueing ICE — remote description not yet set", { peerId: from });
+          return;
+        }
+        try {
+          await state.pc.addIceCandidate(payload.candidate);
+        } catch (err) {
+          log.warn("addIceCandidate failed", { err: String(err) });
+        }
+      }
+    } catch (err) {
+      log.error("signaling handler threw", {
+        peerId: from,
+        kind: payload.kind,
+        err: String(err),
+      });
     }
   }
 
   private installSession(state: ConnectionState, peerPubKeyB64: string): void {
     if (state.session) return;
     const peerPub = fromBase64(peerPubKeyB64);
-    const isClient = this.opts.selfId < state.peerId;
-    state.session = deriveSessionKeys(this.keypair, peerPub, isClient);
+    const isClient = this.selfId < state.peerId;
+    state.session = deriveSessionKeys(this.sessionKeypair, peerPub, isClient);
   }
 }
 
@@ -177,3 +240,6 @@ type ConnectionState = {
   dc?: RTCDataChannel;
   session?: SessionKeys;
 };
+
+/** Re-exports kept for callers that previously imported from this module. */
+export type { SignalPayload, SignalingTransport };
