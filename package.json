@@ -7,11 +7,30 @@
     "build": "pnpm -r build",
     "dev:signal": "pnpm --filter signaling-server dev",
     "dev:cli": "pnpm --filter @p2p/cli dev",
-    "chat": "pnpm --filter @p2p/cli start"
+    "chat": "pnpm --filter @p2p/cli start",
+    "relay:up": "docker compose -f infra/nostr-relay/docker-compose.yml up -d",
+    "relay:down": "docker compose -f infra/nostr-relay/docker-compose.yml down",
+    "relay:logs": "docker compose -f infra/nostr-relay/docker-compose.yml logs -f relay",
+    "relay:test": "node infra/nostr-relay/smoke-test.mjs",
+    "test:phase1": "tsx packages/core/src/demo.ts",
+    "test:phase15": "tsx packages/core/test/nostr-handshake.test.ts",
+    "test:phase2": "tsx packages/core/test/discovery.test.ts",
+    "test:phase3": "tsx packages/core/test/offline-delivery.test.ts",
+    "test:replay": "tsx packages/core/test/restart-replay.test.ts",
+    "test:nostr": "pnpm test:phase15 && pnpm test:phase2 && pnpm test:phase3 && pnpm test:replay"
   },
   "devDependencies": {
-    "typescript": "^5.6.3",
+    "@types/node": "^22.10.0",
     "tsx": "^4.19.2",
-    "@types/node": "^22.10.0"
+    "typescript": "^5.6.3",
+    "ws": "^8.20.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
+  },
+  "dependencies": {
+    "nostr-tools": "^2.23.3"
   }
 }
