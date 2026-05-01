@@ -1,0 +1,15 @@
+services:
+  relay:
+    image: scsibug/nostr-rs-relay:latest
+    container_name: p2p-nostr-relay
+    restart: unless-stopped
+    ports:
+      - "7777:8080"
+    volumes:
+      - ./data:/usr/src/app/db
+      - ./config.toml:/usr/src/app/config.toml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080 >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5

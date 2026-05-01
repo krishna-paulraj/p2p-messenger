@@ -1,0 +1,31 @@
+[info]
+relay_url = "ws://localhost:7777/"
+name = "p2p-messenger-dev"
+description = "Local development relay for p2p-messenger"
+
+[database]
+data_directory = "/usr/src/app/db"
+engine = "sqlite"
+
+[network]
+port = 8080
+address = "0.0.0.0"
+
+[options]
+reject_future_seconds = 1800
+
+[limits]
+messages_per_sec = 200
+subscriptions_per_min = 200
+max_event_bytes = 131072
+max_ws_message_bytes = 131072
+max_ws_frame_bytes = 131072
+broadcast_buffer = 16384
+event_persist_buffer = 4096
+
+[authorization]
+
+[verified_users]
+mode = "disabled"
+
+[diagnostics]
