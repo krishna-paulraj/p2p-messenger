@@ -39,8 +39,7 @@ export function StatusBar({
   const windowLabels = state.contexts.map((c, idx) => {
     const isActive = sameContext(c.ref, state.active);
     const label = c.label.length > 10 ? `${c.label.slice(0, 9)}…` : c.label;
-    const unread = c.unread > 0 ? `(${c.unread})` : "";
-    return { idx, isActive, label, unread, ref: c.ref };
+    return { idx, isActive, label, unread: c.unread, ref: c.ref };
   });
 
   const invitesBadge =
@@ -48,31 +47,38 @@ export function StatusBar({
 
   return (
     <Box borderStyle="round" borderColor="cyan" paddingX={1} flexDirection="column">
-      <Box justifyContent="space-between">
-        <Text>
-          <Text color={badgeColor} dimColor={badgeDim} bold>
-            ● {badge}
-          </Text>
-          <Text>
-            {"  "}
-            {activeKind === "group" ? "#" : activeKind === "peer" ? "→ " : ""}
-            {activeLabel}
-          </Text>
+      {/* Row 1: active context badge + label + invites — single Text so the
+          whole row truncates cleanly on narrow terminals instead of slicing
+          per-segment. */}
+      <Text wrap="truncate-end">
+        <Text color={badgeColor} dimColor={badgeDim} bold>
+          ● {badge}
         </Text>
-        {invitesBadge ? <Text color="yellowBright">{invitesBadge}</Text> : null}
-      </Box>
-      <Box>
-        <Text dimColor>windows: </Text>
+        <Text>
+          {"  "}
+          {activeKind === "group" ? "#" : activeKind === "peer" ? "→ " : ""}
+          {activeLabel}
+        </Text>
+        {invitesBadge ? <Text color="yellowBright">{"   " + invitesBadge}</Text> : null}
+      </Text>
+
+      {/* Row 2: window list — same single-Text-with-truncate trick. */}
+      <Text wrap="truncate-end">
+        <Text dimColor>windows  </Text>
         {windowLabels.map((w, i) => (
           <Text key={i}>
-            <Text color={w.isActive ? "cyanBright" : undefined} dimColor={!w.isActive} bold={w.isActive}>
+            <Text
+              color={w.isActive ? "cyanBright" : undefined}
+              dimColor={!w.isActive}
+              bold={w.isActive}
+            >
               {w.label}
             </Text>
-            {w.unread ? <Text color="yellowBright">{w.unread}</Text> : null}
+            {w.unread > 0 ? <Text color="yellowBright">{`(${w.unread})`}</Text> : null}
             {i < windowLabels.length - 1 ? <Text dimColor>{"  "}</Text> : null}
           </Text>
         ))}
-      </Box>
+      </Text>
     </Box>
   );
 }

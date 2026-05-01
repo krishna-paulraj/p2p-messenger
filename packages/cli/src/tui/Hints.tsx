@@ -10,28 +10,22 @@ export type HintsProps = {
 /**
  * Bottom one-liner showing context-specific commands and key bindings.
  *
- * Goal: discoverability — every screen surfaces 4-6 commands the user is
- * most likely to need, plus the global key bindings, without taking
- * meaningful screen real-estate from the chat itself.
+ * Implementation note: the entire row is wrapped in a single <Text> with
+ * wrap="truncate-end". Multiple sibling <Text> elements would each wrap
+ * independently in ink and slice content mid-word on narrow terminals;
+ * one outer Text guarantees the row stays on a single line and is cut
+ * cleanly with an ellipsis if it doesn't fit.
  */
 export function Hints({ context }: HintsProps) {
-  const cmds = hintsFor(context);
+  const cmds = hintsFor(context).slice(0, 4);
+  const cmdLine = cmds.map((c) => c.name).join("  ");
   return (
     <Box paddingX={1}>
-      <Text dimColor>hints: </Text>
-      {cmds.map((c, i) => (
-        <Text key={c.name}>
-          <Text color="cyanBright">{c.name}</Text>
-          {i < cmds.length - 1 ? <Text dimColor>{"  ·  "}</Text> : null}
-        </Text>
-      ))}
-      <Text dimColor>{"   |   "}</Text>
-      <Text dimColor>Tab </Text>
-      <Text>complete</Text>
-      <Text dimColor>{"  ↑↓ "}</Text>
-      <Text>history</Text>
-      <Text dimColor>{"  Ctrl+N/P "}</Text>
-      <Text>window</Text>
+      <Text wrap="truncate-end">
+        <Text dimColor>hints  </Text>
+        <Text color="cyanBright">{cmdLine}</Text>
+        <Text dimColor>{"   ·   Tab/↑↓/^N^P"}</Text>
+      </Text>
     </Box>
   );
 }
