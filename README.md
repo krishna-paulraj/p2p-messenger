@@ -267,7 +267,3 @@ CLI flags:
 | `--signal` | `--signal nostr://localhost:7777,nos.lol` | Transport selector |
 | `--peer` | `--peer npub1…` / `bob` / `bob@example.com` | Initial peer (resolved via contacts → NIP-05 → npub/hex) |
 | `--data-dir` | `--data-dir ./tmp` | Override `P2P_DATA_DIR` |
-
-## Resume bullet
-
-> Built a hybrid P2P/relay encrypted messenger in Node.js + TypeScript: WebRTC data channels with X25519 + XChaCha20-Poly1305 session keys for low-latency online traffic, layered atop a Nostr-relay control plane (NIP-44 + NIP-59 gift-wrapped signaling, presence-based discovery, NIP-17 store-and-forward) for offline delivery and discovery without any owned infrastructure. Group chats use Signal-style Sender Keys with an HKDF chain ratchet, AAD-bound XChaCha20-Poly1305 ciphertexts, bounded out-of-order delivery, and forward-secret key rotation on member departure. Multi-relay fan-out with per-subscription dedup, vector-clock causal ordering, persistent identity (mode 0600), and an integration test suite covering all five phases.
