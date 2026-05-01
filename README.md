@@ -4,8 +4,8 @@ A serverless, end-to-end encrypted messenger that combines **WebRTC for low-late
 
 ## Status
 
-- [x] **Phase 1** — 1:1 encrypted messaging over WebRTC + WebSocket signaling
-- [x] **Phase 1.5** — Nostr-relay signaling (NIP-44 + NIP-59 gift wrap)
+- [x] **Phase 1** — 1:1 encrypted messaging over WebRTC + WebSocket signaling _(retained as the second implementation behind the `SignalingTransport` interface — having two real impls is what proves the abstraction works)_
+- [x] **Phase 1.5** — Nostr-relay signaling (NIP-44 + NIP-59 gift wrap) _(default)_
 - [x] **Phase 2** — Discovery via Nostr presence events + NIP-05 + local contacts
 - [x] **Phase 3** — NIP-17 store-and-forward offline delivery with vector clocks
 - [ ] Phase 4 — group chats (Sender Keys)
@@ -57,11 +57,16 @@ pnpm install
 pnpm relay:up
 
 # 2. terminal A (alice) — auto-creates her Nostr identity
-pnpm chat --id alice --signal nostr://localhost:7777
+pnpm chat --id alice
+# (Nostr at ws://localhost:7777 is the default; pass --signal to override.)
 
 # 3. terminal B (bob) — paste alice's npub from the alice startup line
-pnpm chat --id bob  --signal nostr://localhost:7777 --peer <alice's npub>
+pnpm chat --id bob --peer <alice's npub>
 ```
+
+To run the original WebSocket-signaling path instead (no Docker required —
+useful as a minimal local dev mode), start `pnpm dev:signal` and pass
+`--signal ws://localhost:8080` to the CLI.
 
 In any session, type `/help` for the full command list.
 

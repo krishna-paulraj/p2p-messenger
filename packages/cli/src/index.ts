@@ -38,7 +38,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const alias = args.get("id");
   const initialPeerArg = args.get("peer");
-  const signal = args.get("signal") ?? "ws://localhost:8080";
+  const signal = args.get("signal") ?? "nostr://localhost:7777";
   const dataDir =
     args.get("data-dir") ?? process.env.P2P_DATA_DIR ?? join(homedir(), ".p2p-messenger");
 
