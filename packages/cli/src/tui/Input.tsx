@@ -3,6 +3,10 @@ import { Box, Text, useInput } from "ink";
 import { Suggestions } from "./Suggestions.js";
 import { COMMANDS, filterByPrefix, type CommandSpec } from "./commandRegistry.js";
 
+/** Cap on simultaneously-visible suggestion rows. Anything more wastes screen and
+ * pushes the input row off-screen on smaller terminals. */
+const POPUP_MAX_ROWS = 5;
+
 export type InputProps = {
   /** Display label inside the input bar (e.g. "→ alice" or "#trio"). */
   label: string;
@@ -13,6 +17,12 @@ export type InputProps = {
   completionAliases: string[];
   /** Called when Enter pressed with non-empty trimmed text. */
   onSubmit: (text: string) => void;
+  /**
+   * Notifies the parent when the suggestion popup opens / closes — so the
+   * parent can shrink the Scrollback row count and keep the input row from
+   * being pushed off the bottom of the terminal.
+   */
+  onPopupChange?: (open: boolean, rows: number) => void;
 };
 
 /**
@@ -25,7 +35,7 @@ export type InputProps = {
  *     selected suggestion, Esc dismisses. Only navigates history when popup
  *     is hidden.
  */
-export function Input({ label, completionAliases, onSubmit }: InputProps) {
+export function Input({ label, completionAliases, onSubmit, onPopupChange }: InputProps) {
   const [draft, setDraft] = useState("");
   const [cursor, setCursor] = useState(0);
   const [history, setHistory] = useState<string[]>([]);
@@ -67,6 +77,25 @@ export function Input({ label, completionAliases, onSubmit }: InputProps) {
   }, [matches, suggestIdx]);
 
   const popupVisible = matches.length > 0;
+  /**
+   * How many terminal rows the popup actually occupies when visible. Used by
+   * the parent to shrink Scrollback so the input row stays on-screen.
+   *   - top + bottom border: 2 rows
+   *   - max visible matches:  POPUP_MAX_ROWS
+   *   - "more above/below" indicator: 0..2 rows
+   */
+  const popupRows = useMemo(() => {
+    if (!popupVisible) return 0;
+    const visible = Math.min(matches.length, POPUP_MAX_ROWS);
+    const hiddenAbove = Math.max(0, suggestIdx - Math.floor(POPUP_MAX_ROWS / 2)) > 0 ? 1 : 0;
+    const hiddenBelow = matches.length > visible ? 1 : 0;
+    return visible + 2 /* borders */ + hiddenAbove + hiddenBelow;
+  }, [popupVisible, matches.length, suggestIdx]);
+
+  // Notify parent on popup state changes so it can resize Scrollback.
+  useEffect(() => {
+    onPopupChange?.(popupVisible, popupRows);
+  }, [popupVisible, popupRows, onPopupChange]);
 
   useInput((input, key) => {
     // ---- Suggestion popup specific keys (only when visible) ----
@@ -191,7 +220,9 @@ export function Input({ label, completionAliases, onSubmit }: InputProps) {
 
   return (
     <Box flexDirection="column">
-      {popupVisible ? <Suggestions matches={matches} selectedIndex={suggestIdx} /> : null}
+      {popupVisible ? (
+        <Suggestions matches={matches} selectedIndex={suggestIdx} maxRows={POPUP_MAX_ROWS} />
+      ) : null}
       <Box>
         <Text color="cyan">{label} </Text>
         <Text>{"› "}</Text>

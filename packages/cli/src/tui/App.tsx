@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useMemo, useCallback } from "react";
+import { useEffect, useReducer, useMemo, useState, useCallback } from "react";
 import { Box, useApp, useInput, useStdout } from "ink";
 import { Header } from "./Header.js";
 import { Hints } from "./Hints.js";
@@ -362,8 +362,14 @@ export function App({ session }: AppProps) {
 
   // ---- Layout sizing ----
   const rows = stdout.rows ?? 24;
-  // Reserve: header(3) + status(4) + hints(1) + input(1) + spacing(1) = ~10 rows
-  const visibleScrollback = Math.max(5, rows - 10);
+  // Track the suggestion popup's footprint so we can shrink Scrollback to keep
+  // the input row anchored on-screen when the popup opens.
+  const [popupRows, setPopupRows] = useState(0);
+  const onPopupChange = useCallback((_open: boolean, popupHeight: number) => {
+    setPopupRows(popupHeight);
+  }, []);
+  // Reserve: header(3) + status(4) + hints(1) + input(1) + popup(dynamic) + spacing(1)
+  const visibleScrollback = Math.max(2, rows - 10 - popupRows);
 
   const activeKind: ContextKind =
     state.active?.kind === "peer"
@@ -407,7 +413,12 @@ export function App({ session }: AppProps) {
       <Scrollback state={state} visibleRows={visibleScrollback} />
       <StatusBar state={state} resolveDisplay={resolveDisplay} />
       <Hints context={activeKind} />
-      <Input label={inputLabel} completionAliases={completionAliases} onSubmit={onSubmit} />
+      <Input
+        label={inputLabel}
+        completionAliases={completionAliases}
+        onSubmit={onSubmit}
+        onPopupChange={onPopupChange}
+      />
     </Box>
   );
 }
