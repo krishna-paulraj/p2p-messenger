@@ -1,9 +1,11 @@
 import { useEffect, useReducer, useMemo, useCallback } from "react";
 import { Box, useApp, useInput, useStdout } from "ink";
 import { Header } from "./Header.js";
+import { Hints } from "./Hints.js";
 import { Scrollback } from "./Scrollback.js";
 import { StatusBar } from "./StatusBar.js";
 import { Input } from "./Input.js";
+import type { ContextKind } from "./commandRegistry.js";
 import {
   initialState,
   reducer,
@@ -360,8 +362,15 @@ export function App({ session }: AppProps) {
 
   // ---- Layout sizing ----
   const rows = stdout.rows ?? 24;
-  // Reserve: header(3) + status(4) + input(1) + spacing(1) = ~9 rows
-  const visibleScrollback = Math.max(5, rows - 9);
+  // Reserve: header(3) + status(4) + hints(1) + input(1) + spacing(1) = ~10 rows
+  const visibleScrollback = Math.max(5, rows - 10);
+
+  const activeKind: ContextKind =
+    state.active?.kind === "peer"
+      ? "peer"
+      : state.active?.kind === "group"
+        ? "group"
+        : "system";
 
   const inputLabel = useMemo(() => {
     if (!state.active || state.active.kind === "system") return "*system*";
@@ -397,6 +406,7 @@ export function App({ session }: AppProps) {
       <Header state={state} />
       <Scrollback state={state} visibleRows={visibleScrollback} />
       <StatusBar state={state} resolveDisplay={resolveDisplay} />
+      <Hints context={activeKind} />
       <Input label={inputLabel} completionAliases={completionAliases} onSubmit={onSubmit} />
     </Box>
   );
