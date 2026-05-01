@@ -21,6 +21,14 @@ export const KINDS = {
    * 30000-39999 is the NIP-01 PRE range.
    */
   P2P_PRESENCE: 30078,
+  /**
+   * Application-defined inner kind for group control + data. The actual
+   * payload type (invite, sender-key share, group message, leave) is
+   * discriminated by a `type` field inside the JSON content. Sharing one
+   * inner kind keeps subscription overhead constant regardless of how many
+   * group operation types we add later.
+   */
+  P2P_GROUP: 25001,
 } as const;
 
 /** Stable d-tag identifier for our presence event. */

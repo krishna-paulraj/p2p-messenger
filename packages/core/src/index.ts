@@ -62,4 +62,13 @@ export {
   type MessengerSource,
   type SendResult,
 } from "./messenger.js";
+export { GroupStore } from "./nostr/group/group-store.js";
+export {
+  GroupMessenger,
+  type GroupMessengerOptions,
+  type IncomingGroupMessage,
+  type IncomingInvite,
+} from "./nostr/group/group-messenger.js";
+export type { Group, StoredInvite } from "./nostr/group/types.js";
+export { GROUP_CONTENT_TYPES } from "./nostr/group/types.js";
 export { makeLogger, setLogLevel, type Logger } from "./util/logger.js";
