@@ -70,6 +70,50 @@ useful as a minimal local dev mode), start `pnpm dev:signal` and pass
 
 In any session, type `/help` for the full command list.
 
+### Full-screen TUI (recommended)
+
+A modern split-pane chat UI built with React + ink — detached input, scrollback per conversation, color-coded peers, tab completion, history recall, multi-window switching.
+
+```bash
+pnpm chat:tui --id alice
+# (paste alice's npub from the startup line)
+
+pnpm chat:tui --id bob --signal nostr://localhost:7777
+```
+
+Layout:
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│ alice  npub1jj9…rljzs   nostr (1 relay) as alice    ● 1/1 relays  │  ← header
+├────────────────────────────────────────────────────────────────────┤
+│ 11:42  bob          hey, you around?                               │
+│ 11:43  alice        yeah, just woke up                             │
+│ 11:43  ●            charlie is online                              │
+│ 11:44  charlie      [drained] saw the test results                 │  ← scrollback
+│ 11:46  alice        nice                                           │
+├────────────────────────────────────────────────────────────────────┤
+│ ● p2p   → bob                                       ✉ 1 invite(s) │  ← status
+│ windows: *system  bob  charlie  trio                               │
+│ → bob ›  what's the timeline_                                      │  ← input
+└────────────────────────────────────────────────────────────────────┘
+```
+
+Keybindings:
+
+| Key | Action |
+|---|---|
+| `Tab` | Complete `/command` or `@alias` |
+| `↑` / `↓` | Recall message history |
+| `Ctrl+N` / `Ctrl+P` | Next / previous window |
+| `Ctrl+A` / `Ctrl+E` | Cursor to start / end of input |
+| `Ctrl+U` | Clear input line |
+| `/win <n>` | Jump directly to window n |
+
+Same slash commands as the readline CLI; type `/help` once running.
+
+The original readline CLI (`pnpm chat`) is preserved for headless use, integration tests, and any environment where ink's TTY requirement is awkward.
+
 ### Multi-relay redundancy demo
 
 ```bash

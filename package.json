@@ -8,6 +8,7 @@
     "dev:signal": "pnpm --filter signaling-server dev",
     "dev:cli": "pnpm --filter @p2p/cli dev",
     "chat": "pnpm --filter @p2p/cli start",
+    "chat:tui": "pnpm --filter @p2p/cli tui",
     "relay:up": "docker compose -f infra/nostr-relay/docker-compose.yml up -d",
     "relay:down": "docker compose -f infra/nostr-relay/docker-compose.yml down",
     "relay:logs": "docker compose -f infra/nostr-relay/docker-compose.yml logs -f relay",
