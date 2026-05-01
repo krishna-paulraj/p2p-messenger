@@ -4,6 +4,8 @@ import { join } from "node:path";
 import {
   ContactBook,
   DedupStore,
+  GroupMessenger,
+  GroupStore,
   Messenger,
   OfflineMessenger,
   Peer,
@@ -85,6 +87,17 @@ async function main() {
   const clock = identity && clockPath ? loadClock(clockPath, identity.publicKey) : undefined;
   const dedup = dedupPath ? new DedupStore(dedupPath) : undefined;
 
+  const groupStore = identity ? new GroupStore({ dataDir, ownerAlias: alias }) : undefined;
+  const groupMessenger =
+    identity && pool && groupStore
+      ? new GroupMessenger({
+          pool,
+          selfPubkey: identity.publicKey,
+          selfSecret: identity.secretKey,
+          store: groupStore,
+        })
+      : undefined;
+
   const offline =
     identity && pool && clock && dedup
       ? new OfflineMessenger({
@@ -105,6 +118,8 @@ async function main() {
 
   const knownPeers = new Set<string>();
   let activePeer: string | undefined;
+  /** When set, typed lines route to this group instead of the active peer. */
+  let activeGroupId: string | undefined;
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
@@ -116,6 +131,13 @@ async function main() {
   };
 
   const updatePrompt = () => {
+    if (activeGroupId) {
+      const g = groupStore?.get(activeGroupId);
+      const name = g?.name ?? "?";
+      const memCount = g?.members.length ?? 0;
+      rl.setPrompt(`# [${name} · ${memCount}] > `);
+      return;
+    }
     if (!activePeer) {
       rl.setPrompt("> ");
       return;
@@ -144,6 +166,32 @@ async function main() {
     rl.prompt();
   });
 
+  groupMessenger?.onInvite((inv) => {
+    process.stdout.write(
+      `\n[group invite] "${inv.groupName}" from ${displayPeer(inv.inviter)} (${inv.members.length} member${inv.members.length === 1 ? "" : "s"})\n  → /group accept ${inv.eventId.slice(0, 8)}\n`,
+    );
+    updatePrompt();
+    rl.prompt();
+  });
+
+  groupMessenger?.onMessage((msg) => {
+    const tag = msg.fromDrain ? " (from-drain)" : "";
+    process.stdout.write(
+      `\n#${msg.groupName} ${displayPeer(msg.from)}> ${msg.text}${tag}\n`,
+    );
+    updatePrompt();
+    rl.prompt();
+  });
+
+  groupMessenger?.onMembership((e) => {
+    const g = groupStore?.get(e.groupId);
+    if (!g) return;
+    const mark = e.kind === "joined" ? "+" : "−";
+    process.stdout.write(`\n#${g.name} ${mark} ${displayPeer(e.pubkey)}\n`);
+    updatePrompt();
+    rl.prompt();
+  });
+
   presenceWatch?.on((snap) => {
     const c = contacts?.byPubkeyOrUndefined(snap.pubkey);
     if (!c) return;
@@ -158,9 +206,14 @@ async function main() {
 
   await peer.start();
   if (offline) await offline.start();
+  if (groupMessenger) await groupMessenger.start();
   console.log(`[startup] ${resolved.description}`);
   if (identity) console.log(`[startup] your npub: ${identity.npub}`);
   if (offline) console.log(`[startup] offline drain enabled (NIP-17)`);
+  if (groupMessenger && groupStore) {
+    const groups = groupStore.list();
+    if (groups.length > 0) console.log(`[startup] tracking ${groups.length} group(s)`);
+  }
 
   let initialPeerId: string | undefined;
   if (initialPeerArg) {
@@ -215,6 +268,23 @@ async function main() {
       return;
     }
 
+    if (activeGroupId && groupMessenger && groupStore) {
+      const g = groupStore.get(activeGroupId);
+      const name = g?.name ?? "?";
+      void groupMessenger
+        .send(activeGroupId, text)
+        .then(() => {
+          process.stdout.write(`\x1b[1A\x1b[2K\r#${name} ${alias}> ${text}\n`);
+          updatePrompt();
+          rl.prompt();
+        })
+        .catch((err) => {
+          console.error("group send failed:", (err as Error).message);
+          rl.prompt();
+        });
+      return;
+    }
+
     if (!activePeer) {
       console.log("(no active peer yet — wait for a connection or use /to <id>)");
       return rl.prompt();
@@ -238,6 +308,8 @@ async function main() {
   rl.on("close", async () => {
     await presencePub?.stop();
     presenceWatch?.close();
+    if (groupMessenger) await groupMessenger.close();
+    groupStore?.close();
     if (clock && clockPath) saveClock(clockPath, clock);
     dedup?.close();
     await messenger.close();
@@ -488,20 +560,155 @@ async function main() {
       return;
     }
 
+    if (head === "group") {
+      if (!groupMessenger || !groupStore) {
+        console.log("(groups only available on nostr transport)");
+        return;
+      }
+      const sub = rest[0];
+
+      if (sub === "create" && rest[1]) {
+        const name = rest.slice(1).join(" ");
+        const g = groupMessenger.createGroup(name);
+        activeGroupId = g.id;
+        console.log(`created #${g.name} (id=${g.id.slice(0, 8)}…)`);
+        console.log("(invite members with: /group invite <peer>)");
+        updatePrompt();
+        return;
+      }
+
+      if (sub === "invite" && rest[1]) {
+        if (!activeGroupId) {
+          console.log("(no active group — /group focus <name> first or pass --group)");
+          return;
+        }
+        try {
+          const peerPk = await resolvePeerArg(rest[1]);
+          await groupMessenger.invite({ groupId: activeGroupId, peerPubkey: peerPk });
+          console.log(`invited ${displayPeer(peerPk)} to ${groupStore.get(activeGroupId)?.name}`);
+        } catch (err) {
+          console.error("invite failed:", (err as Error).message);
+        }
+        return;
+      }
+
+      if (sub === "accept" && rest[1]) {
+        const partial = rest[1];
+        const match = groupStore.invites().find((i) => i.eventId.startsWith(partial));
+        if (!match) {
+          console.log(`(no pending invite matching "${partial}")`);
+          return;
+        }
+        try {
+          const g = await groupMessenger.accept(match.eventId);
+          activeGroupId = g.id;
+          console.log(`joined #${g.name} (${g.members.length} members)`);
+          updatePrompt();
+        } catch (err) {
+          console.error("accept failed:", (err as Error).message);
+        }
+        return;
+      }
+
+      if (sub === "invites") {
+        const list = groupStore.invites();
+        if (list.length === 0) console.log("(no pending invites)");
+        for (const i of list) {
+          console.log(
+            `  ${i.eventId.slice(0, 8)}  "${i.groupName}" from ${displayPeer(i.inviter)} (${i.members.length} members)`,
+          );
+        }
+        return;
+      }
+
+      if (sub === "list" || sub === undefined) {
+        const list = groupStore.list();
+        if (list.length === 0) console.log("(no groups — /group create <name>)");
+        for (const g of list) {
+          const star = activeGroupId === g.id ? "*" : " ";
+          console.log(
+            `  ${star} #${g.name.padEnd(16)} ${g.members.length} member${g.members.length === 1 ? "" : "s"}  (id=${g.id.slice(0, 8)}…)`,
+          );
+        }
+        return;
+      }
+
+      if (sub === "focus" && rest[1]) {
+        const target = rest.slice(1).join(" ");
+        const g = groupStore.byName(target) ?? groupStore.get(target);
+        if (!g) {
+          console.log(`(no group named "${target}")`);
+          return;
+        }
+        activeGroupId = g.id;
+        console.log(`(active group set to #${g.name})`);
+        updatePrompt();
+        return;
+      }
+
+      if (sub === "members" && rest[1]) {
+        const target = rest.slice(1).join(" ");
+        const g = groupStore.byName(target) ?? groupStore.get(target);
+        if (!g) {
+          console.log(`(no group named "${target}")`);
+          return;
+        }
+        for (const m of g.members) {
+          const me = m === identity?.publicKey ? "  (you)" : "";
+          console.log(`  ${displayPeer(m)}${me}`);
+        }
+        return;
+      }
+
+      if (sub === "leave" && rest[1]) {
+        const target = rest.slice(1).join(" ");
+        const g = groupStore.byName(target) ?? groupStore.get(target);
+        if (!g) {
+          console.log(`(no group named "${target}")`);
+          return;
+        }
+        try {
+          await groupMessenger.leave(g.id);
+          if (activeGroupId === g.id) activeGroupId = undefined;
+          console.log(`left #${g.name}`);
+          updatePrompt();
+        } catch (err) {
+          console.error("leave failed:", (err as Error).message);
+        }
+        return;
+      }
+
+      if (sub === "exit") {
+        activeGroupId = undefined;
+        console.log("(exited group focus — typed messages now go to active peer)");
+        updatePrompt();
+        return;
+      }
+
+      console.log(
+        "usage: /group create <name> | /group list | /group focus <name>",
+      );
+      console.log(
+        "       /group invite <peer> | /group invites | /group accept <id>",
+      );
+      console.log(
+        "       /group members <name> | /group leave <name> | /group exit",
+      );
+      return;
+    }
+
     if (head === "help" || head === "?") {
       console.log("/whoami                       show your identity");
-      console.log("/contact list                 list contacts");
-      console.log("/contact add <alias> <ref>    add a contact (ref=npub|hex|nip05)");
-      console.log("/contact rm <alias>           remove a contact");
-      console.log("/profile set <name> [about]   publish your profile metadata");
-      console.log("/profile get <peer>           fetch a peer's profile");
+      console.log("/contact list|add|rm          manage contacts");
+      console.log("/profile set|get              manage Nostr profile metadata");
       console.log("/online                       list contacts currently online");
       console.log("/to <id|alias>                switch active peer");
       console.log("/dial <id|alias>              open a P2P (WebRTC) connection");
-      console.log("/sendto <peer> <msg>          send (auto-routes P2P or relay)");
+      console.log("/sendto <peer> <msg>          send 1:1 (auto-routes P2P or relay)");
       console.log("/all <msg>                    broadcast to all P2P-connected peers");
       console.log("/peers                        list connected/known/online peers");
       console.log("/history [id] [n]             show recent messages");
+      console.log("/group ...                    group commands (try /group)");
       console.log("/quit                         exit");
       return;
     }
