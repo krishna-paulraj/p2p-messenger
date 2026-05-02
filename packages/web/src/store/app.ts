@@ -17,8 +17,10 @@ import {
   clearIdentity,
   loadContacts,
   loadMessages,
+  loadRelays,
   saveContacts,
   saveMessages,
+  saveRelays,
   type StoredContact,
   type StoredMessage,
 } from "../db/store";
@@ -49,6 +51,8 @@ export type AppState = {
   removeContact(alias: string): Promise<void>;
   send(text: string): Promise<void>;
   resetIdentity(): Promise<void>;
+  addRelay(url: string): Promise<void>;
+  removeRelay(url: string): Promise<void>;
 };
 
 export const useApp = create<AppState>((set, get) => ({
@@ -65,7 +69,12 @@ export const useApp = create<AppState>((set, get) => ({
     const identity = await getOrCreateIdentity(alias);
     const contacts = await loadContacts();
     const messages = await loadMessages();
-    const relays = relayUrls ?? get().relayUrls;
+    // Persisted relay list (set in past sessions) wins over the LoginPanel
+    // default; the LoginPanel value only applies for first-run identity
+    // creation when the IDB key is absent.
+    const persistedRelays = await loadRelays();
+    const relays = persistedRelays ?? relayUrls ?? get().relayUrls;
+    if (!persistedRelays) await saveRelays(relays);
     set({ identity, contacts, messages, relayUrls: relays });
 
     messengerRef = new WebMessenger({
@@ -125,6 +134,29 @@ export const useApp = create<AppState>((set, get) => ({
     const nextMessages = { ...get().messages, [peer]: nextLog };
     set({ messages: nextMessages });
     void saveMessages(nextMessages);
+  },
+
+  async addRelay(url: string) {
+    const trimmed = url.trim();
+    if (!trimmed) throw new Error("relay url required");
+    if (!/^wss?:\/\//.test(trimmed)) {
+      throw new Error("relay url must start with ws:// or wss://");
+    }
+    const current = get().relayUrls;
+    if (current.includes(trimmed)) return;
+    const next = [...current, trimmed];
+    await saveRelays(next);
+    set({ relayUrls: next });
+    if (messengerRef) await messengerRef.addRelay(trimmed);
+  },
+
+  async removeRelay(url: string) {
+    const current = get().relayUrls;
+    if (!current.includes(url)) return;
+    const next = current.filter((u) => u !== url);
+    await saveRelays(next);
+    set({ relayUrls: next });
+    if (messengerRef) await messengerRef.removeRelay(url);
   },
 
   async resetIdentity() {

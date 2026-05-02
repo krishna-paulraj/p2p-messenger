@@ -1,12 +1,15 @@
+import { useState } from "react";
 import { useApp } from "../store/app";
 import { shortNpub, shortPubkey } from "../lib/colors";
 import { CopyButton } from "./CopyButton";
+import { RelaysPanel } from "./RelaysPanel";
 
 export function Header() {
   const identity = useApp((s) => s.identity);
   const relayOpen = useApp((s) => s.relayOpen);
   const relayTotal = useApp((s) => s.relayUrls.length);
   const reset = useApp((s) => s.resetIdentity);
+  const [showRelays, setShowRelays] = useState(false);
 
   const allRelaysOk = relayOpen === relayTotal && relayTotal > 0;
 
@@ -37,16 +40,21 @@ export function Header() {
             </div>
           </>
         )}
-        <div className="flex items-center gap-1.5">
+        <button
+          onClick={() => setShowRelays(true)}
+          className="group flex items-center gap-1.5 rounded px-2 py-1 transition hover:bg-slate-800/60"
+          title="manage relays"
+        >
           <span
             className={`h-2 w-2 rounded-full ${
               allRelaysOk ? "bg-emerald-400" : relayOpen > 0 ? "bg-amber-400" : "bg-slate-600"
             }`}
           />
-          <span className="text-slate-400">
+          <span className="text-slate-400 group-hover:text-slate-200">
             {relayOpen}/{relayTotal} relays
           </span>
-        </div>
+          <span className="text-slate-600 group-hover:text-slate-300">+</span>
+        </button>
         {identity && (
           <button
             onClick={() => {
@@ -60,6 +68,7 @@ export function Header() {
           </button>
         )}
       </div>
+      {showRelays && <RelaysPanel onClose={() => setShowRelays(false)} />}
     </header>
   );
 }

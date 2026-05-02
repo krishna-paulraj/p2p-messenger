@@ -99,6 +99,63 @@ export class WebMessenger {
         ? Math.max(this.dedup.drainedAt - GIFT_WRAP_BACKDATE, now - MAX_LOOKBACK)
         : now - DEFAULT_LOOKBACK;
 
+    this.subscribeNow(since);
+
+    // Eagerly connect to all relays so the user sees an honest 1/1 (or 3/3)
+    // status indicator straight away rather than 0/N for the first ~second.
+    void this.warmConnections().then(() => this.broadcastRelayStatus());
+
+    // Poll periodically so disconnects + reconnects are reflected.
+    setInterval(() => this.broadcastRelayStatus(), 3000);
+    this.broadcastRelayStatus();
+  }
+
+  /** Current relay set (read-only snapshot). */
+  relays(): RelayUrl[] {
+    return [...this.opts.relays];
+  }
+
+  /**
+   * Add a relay at runtime. Resubscribes so the new relay receives historical
+   * gift wraps p-tagged for us and live events going forward. No-op if the
+   * URL is already present.
+   */
+  async addRelay(url: string): Promise<void> {
+    if (this.opts.relays.includes(url)) return;
+    this.opts.relays = [...this.opts.relays, url];
+    await this.warmConnections();
+    this.resubscribe();
+    this.broadcastRelayStatus();
+  }
+
+  /** Remove a relay at runtime. Closes its connection on this pool. */
+  async removeRelay(url: string): Promise<void> {
+    if (!this.opts.relays.includes(url)) return;
+    this.opts.relays = this.opts.relays.filter((u) => u !== url);
+    try {
+      this.pool.close([url]);
+    } catch {
+      // best-effort
+    }
+    this.resubscribe();
+    this.broadcastRelayStatus();
+  }
+
+  private resubscribe(): void {
+    this.subCloser?.close();
+    const now = Math.floor(Date.now() / 1000);
+    const since =
+      this.dedup.drainedAt > 0
+        ? Math.max(this.dedup.drainedAt - GIFT_WRAP_BACKDATE, now - MAX_LOOKBACK)
+        : now - DEFAULT_LOOKBACK;
+    this.subscribeNow(since);
+  }
+
+  private subscribeNow(since: number): void {
+    if (this.opts.relays.length === 0) {
+      this.subCloser = undefined;
+      return;
+    }
     this.subCloser = this.pool.subscribeMany(
       this.opts.relays,
       {
@@ -110,14 +167,6 @@ export class WebMessenger {
         onevent: (event) => this.onWrap(event),
       },
     );
-
-    // Eagerly connect to all relays so the user sees an honest 1/1 (or 3/3)
-    // status indicator straight away rather than 0/N for the first ~second.
-    void this.warmConnections().then(() => this.broadcastRelayStatus());
-
-    // Poll periodically so disconnects + reconnects are reflected.
-    setInterval(() => this.broadcastRelayStatus(), 3000);
-    this.broadcastRelayStatus();
   }
 
   onMessage(fn: (msg: IncomingMessage) => void): () => void {

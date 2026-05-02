@@ -28,6 +28,7 @@ const KEYS = {
   dedup: "dedup",
   ratchets: "ratchets",
   messages: "messages",
+  relays: "relays",
 } as const;
 
 export type StoredIdentity = {
@@ -127,6 +128,16 @@ export async function saveRatchets(
   r: Record<string, SerializedRatchet>,
 ): Promise<void> {
   await set(KEYS.ratchets, r, ydb);
+}
+
+// ---- Relay list ----
+
+export async function loadRelays(): Promise<string[] | undefined> {
+  return get<string[]>(KEYS.relays, ydb);
+}
+
+export async function saveRelays(urls: string[]): Promise<void> {
+  await set(KEYS.relays, urls, ydb);
 }
 
 // ---- Message history ----
