@@ -9,7 +9,7 @@ A serverless, end-to-end encrypted messenger that combines **WebRTC for low-late
 - [x] **Phase 2** — Discovery via Nostr presence events + NIP-05 + local contacts
 - [x] **Phase 3** — NIP-17 store-and-forward offline delivery with vector clocks
 - [x] **Phase 4** — group chats with Signal-style Sender Keys (HKDF chain ratchet, member-leave rotation)
-- [ ] Phase 5 — Double Ratchet forward secrecy
+- [x] **Phase 5** — Signal-style Double Ratchet on the 1:1 offline (NIP-17) path: per-message FS via HKDF symmetric ratchet, post-compromise security via DH ratchet on direction flip
 - [ ] Phase 6 — file transfer over the same protocol
 
 ## Architecture
@@ -174,6 +174,7 @@ Group internals:
 | Nostr DM payload | NIP-44 v2 (XChaCha20 + HMAC-SHA256) | `nostr-tools/nip44` |
 | Sender anonymity | NIP-59 gift wrap (rumor → seal → wrap) | `nostr-tools/nip59` |
 | Group payload | Sender Keys: HKDF-SHA256 chain ratchet → XChaCha20-Poly1305 (AAD-bound to groupId+sender+epoch+counter) | `@noble/hashes`, `@noble/ciphers` |
+| 1:1 offline payload | Double Ratchet: x25519 DH ratchet + HKDF symmetric ratchet → XChaCha20-Poly1305 (AAD-bound to dhPub+counter+conversation pair) | `@noble/curves`, `@noble/hashes`, `@noble/ciphers` |
 | Hashing | SHA-256, BLAKE3-ready | `@noble/hashes` |
 
 ## Security & threat model
@@ -186,12 +187,14 @@ What the design protects:
 - **At-rest secret keys** — files written with `chmod 0600`, parent directory `0700`. Permission drift is detected and re-tightened on load.
 - **Forward secrecy within a group sender chain** — every group message uses a fresh HKDF-derived message key; chain key advances and the previous one is overwritten. Stealing today's chain key does not decrypt yesterday's messages from that sender.
 - **Forward secrecy on member departure** — when a member leaves, every remaining member rotates to a new chain seed (epoch++) and redistributes via pairwise NIP-17. The departed member's stored peer-chain is at the old epoch, so messages encrypted at the new epoch are unreadable.
+- **Per-message forward secrecy on the 1:1 offline path** — every NIP-17 chat message is encrypted under a freshly-derived message key from a Double Ratchet symmetric chain. Each message advances the chain via HKDF and the previous chain key is overwritten.
+- **Post-compromise security on direction flip** — when the other party replies after we've sent, both sides rotate to new ephemeral X25519 keypairs and mix a fresh DH secret into the root key. An attacker who held our previous chain keys can no longer derive future ones.
+- **Bootstrap caveat** — the very first chain on each side is bootstrapped from a deterministic split of static-static secp256k1 ECDH (no published one-time prekeys). Messages sent before the *first* DH ratchet step (i.e. before the recipient's first reply) have only the protection of the long-term identity keys' shared secret. Every chain after that has full Signal-grade FS + PCS.
 
 What the design does **not** protect (yet):
 
 - **Metadata** — relays still observe recipient, frequency, and approximate timing. Mitigations require Tor / private relays.
-- **Forward secrecy** — Phase 1 / 3 use static identity keys for the Nostr layer. The data-channel session is fresh per WebRTC connection but the Nostr seal is not. Phase 5 (Double Ratchet) closes this.
-- **Compromised endpoint** — local plaintext history & secret key file are at the OS file-permission boundary. No passphrase encryption yet.
+- **Compromised endpoint** — local plaintext history & secret key file are at the OS file-permission boundary. No passphrase encryption yet. Ratchet state on disk is also at this boundary; an attacker who steals it can decrypt subsequent in-flight messages until the next DH ratchet step.
 - **Sybil / spam** — anyone can DM your pubkey. PoW / contact-list filtering is future work.
 
 ## Project layout
@@ -246,6 +249,8 @@ pnpm -w run test:phase2     presence + alias-resolution
 pnpm -w run test:phase3     offline delivery + dedup + vector clocks (causal order)
 pnpm -w run test:replay     stale-signaling replay regression
 pnpm -w run test:phase4     3-member group + Sender Keys + member-leave rotation
+pnpm -w run test:dr         pure-crypto unit tests for Double Ratchet primitives
+pnpm -w run test:phase5     Double Ratchet over relays — 3 sends + DH-flip + post-flip header rotation
 pnpm -w run test:nostr      runs all of the above sequentially
 ```
 

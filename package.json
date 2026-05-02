@@ -19,7 +19,9 @@
     "test:phase3": "tsx packages/core/test/offline-delivery.test.ts",
     "test:replay": "tsx packages/core/test/restart-replay.test.ts",
     "test:phase4": "tsx packages/core/test/group.test.ts",
-    "test:nostr": "pnpm -w run test:phase15 && pnpm -w run test:phase2 && pnpm -w run test:phase3 && pnpm -w run test:replay && pnpm -w run test:phase4"
+    "test:phase5": "tsx packages/core/test/dr-offline.test.ts",
+    "test:dr": "tsx packages/core/test/double-ratchet.test.ts",
+    "test:nostr": "pnpm -w run test:phase15 && pnpm -w run test:phase2 && pnpm -w run test:phase3 && pnpm -w run test:replay && pnpm -w run test:phase4 && pnpm -w run test:dr && pnpm -w run test:phase5"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
