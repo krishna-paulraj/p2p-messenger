@@ -22,7 +22,12 @@ import {
   type StoredContact,
   type StoredMessage,
 } from "../db/store";
-import { decodePeerRef, getOrCreateIdentity, npubFor, type WebIdentity } from "../protocol/identity";
+import {
+  decodePeerRef,
+  getOrCreateIdentity,
+  npubFor,
+  type WebIdentity,
+} from "../protocol/identity";
 import { WebMessenger, type IncomingMessage } from "../protocol/messenger";
 
 const DEFAULT_RELAYS = ["ws://localhost:7777"];
@@ -166,4 +171,30 @@ function onIncoming(
   const nextMessages = { ...get().messages, [msg.from]: nextLog };
   set({ messages: nextMessages });
   void saveMessages(nextMessages);
+
+  // Auto-add the sender to contacts on first inbound. Without this, the
+  // ContactList sidebar (which iterates the contacts map) wouldn't render
+  // a conversation row for unknown senders and the message would be
+  // invisible despite being decrypted + stored.
+  const existing = Object.values(get().contacts).find((c) => c.pubkey === msg.from);
+  if (!existing) {
+    const baseAlias = `peer-${msg.from.slice(0, 6)}`;
+    let alias = baseAlias;
+    let n = 1;
+    const taken = get().contacts;
+    while (alias in taken) {
+      n += 1;
+      alias = `${baseAlias}-${n}`;
+    }
+    const newContact: StoredContact = {
+      alias,
+      pubkey: msg.from,
+      npub: npubFor(msg.from),
+      addedAt: Math.floor(Date.now() / 1000),
+      note: "auto-added on first inbound message",
+    };
+    const nextContacts = { ...get().contacts, [alias]: newContact };
+    set({ contacts: nextContacts });
+    void saveContacts(nextContacts);
+  }
 }
