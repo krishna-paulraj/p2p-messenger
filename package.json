@@ -21,7 +21,8 @@
     "test:phase4": "tsx packages/core/test/group.test.ts",
     "test:phase5": "tsx packages/core/test/dr-offline.test.ts",
     "test:dr": "tsx packages/core/test/double-ratchet.test.ts",
-    "test:nostr": "pnpm -w run test:phase15 && pnpm -w run test:phase2 && pnpm -w run test:phase3 && pnpm -w run test:replay && pnpm -w run test:phase4 && pnpm -w run test:dr && pnpm -w run test:phase5"
+    "test:phase6": "tsx packages/core/test/file-transfer.test.ts",
+    "test:nostr": "pnpm -w run test:phase15 && pnpm -w run test:phase2 && pnpm -w run test:phase3 && pnpm -w run test:replay && pnpm -w run test:phase4 && pnpm -w run test:dr && pnpm -w run test:phase5 && pnpm -w run test:phase6"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

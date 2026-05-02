@@ -10,7 +10,7 @@ A serverless, end-to-end encrypted messenger that combines **WebRTC for low-late
 - [x] **Phase 3** — NIP-17 store-and-forward offline delivery with vector clocks
 - [x] **Phase 4** — group chats with Signal-style Sender Keys (HKDF chain ratchet, member-leave rotation)
 - [x] **Phase 5** — Signal-style Double Ratchet on the 1:1 offline (NIP-17) path: per-message FS via HKDF symmetric ratchet, post-compromise security via DH ratchet on direction flip
-- [ ] Phase 6 — file transfer over the same protocol
+- [x] **Phase 6** — hybrid file transfer: WebRTC SecureChannel (multiplexed data channel, low-latency, native backpressure) when peers are P2P-connected; NIP-17 store-and-forward via relays otherwise. BLAKE3 chunk hashes + Merkle root, AEAD chunk auth, atomic rename on completion.
 
 ## Architecture
 
@@ -135,6 +135,36 @@ pnpm chat --id bob --signal nostr://localhost:7777
 # bob sees: alice> ping while you were out (via relay)
 ```
 
+### File transfer demo
+
+```bash
+# alice and bob are running and have each other as contacts
+# in alice's session:
+/send bob ~/Downloads/photo.jpg
+
+# bob auto-accepts (alice is in his contacts) and the file lands at:
+#   ~/.p2p-messenger/incoming/<fileId>__photo.jpg
+```
+
+Routing: if alice and bob are P2P-connected (`/dial bob` succeeded earlier),
+the transfer goes over a dedicated WebRTC `SecureChannel` (a separate
+RTCDataChannel labeled `file:<fileId>`, encrypted with the X25519 session
+key, with native SCTP backpressure). Otherwise it falls back to NIP-17
+gift-wrapped relay events at ~30 chunks/sec.
+
+Limits: chunks are 10 KiB; max file size is 2 MiB on the relay path so the
+manifest fits inside one NIP-17 envelope. WebRTC has no manifest size
+limit but we cap there too for v1 consistency.
+
+Integrity: each chunk is BLAKE3-hashed and the manifest carries a Merkle
+root; receivers verify per-chunk hashes on arrival and the full Merkle
+root before atomic-renaming `<dest>.partial.<fileId>` → final path.
+
+Trust model: receivers auto-accept files from peers in their contact book.
+Files from unknown senders trigger an `incoming-manifest` event with
+`autoAccepted=false`; the user must `/accept <fileId-prefix>` (or
+`/reject`) to proceed. This blocks unsolicited 2 MiB sends from spammers.
+
 ### Group chat demo
 
 ```bash
@@ -175,7 +205,10 @@ Group internals:
 | Sender anonymity | NIP-59 gift wrap (rumor → seal → wrap) | `nostr-tools/nip59` |
 | Group payload | Sender Keys: HKDF-SHA256 chain ratchet → XChaCha20-Poly1305 (AAD-bound to groupId+sender+epoch+counter) | `@noble/hashes`, `@noble/ciphers` |
 | 1:1 offline payload | Double Ratchet: x25519 DH ratchet + HKDF symmetric ratchet → XChaCha20-Poly1305 (AAD-bound to dhPub+counter+conversation pair) | `@noble/curves`, `@noble/hashes`, `@noble/ciphers` |
-| Hashing | SHA-256, BLAKE3-ready | `@noble/hashes` |
+| File chunks (P2P) | XChaCha20-Poly1305 over WebRTC SecureChannel, same X25519 session key as chat | `@noble/ciphers` |
+| File chunks (relay) | Double Ratchet ciphertext per chunk inside NIP-17 gift wrap (forward-secret) | `@noble/curves`, `@noble/ciphers` |
+| File integrity | BLAKE3-256 per chunk + binary Merkle root | `@noble/hashes` |
+| Hashing | SHA-256, BLAKE3 | `@noble/hashes` |
 
 ## Security & threat model
 
@@ -251,6 +284,7 @@ pnpm -w run test:replay     stale-signaling replay regression
 pnpm -w run test:phase4     3-member group + Sender Keys + member-leave rotation
 pnpm -w run test:dr         pure-crypto unit tests for Double Ratchet primitives
 pnpm -w run test:phase5     Double Ratchet over relays — 3 sends + DH-flip + post-flip header rotation
+pnpm -w run test:phase6     hybrid file transfer — 150 KB via relay + 800 KB via WebRTC, sha256 verified
 pnpm -w run test:nostr      runs all of the above sequentially
 ```
 
