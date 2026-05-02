@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   ContactBook,
   DedupStore,
+  FileTransferManager,
   GroupMessenger,
   GroupStore,
   Messenger,
@@ -99,6 +100,11 @@ async function main() {
         })
       : undefined;
 
+  // FileTransferManager is constructed AFTER offlineMessenger below, since it
+  // needs the offline reference. We declare a let-binding here and assign
+  // post-construction.
+  let files: FileTransferManager | undefined;
+
   const ratchetStore = identity ? new RatchetStore({ dataDir, ownerAlias: alias }) : undefined;
 
   const offline =
@@ -118,6 +124,16 @@ async function main() {
     peer,
     offline,
     tickClock: clock ? () => clock.tick() : undefined,
+  });
+
+  // Auto-accept incoming files only from peers in our contact book.
+  // Unknown senders fire `incoming-manifest` with autoAccepted=false and
+  // wait for an explicit /accept.
+  files = new FileTransferManager({
+    peer,
+    offline,
+    dataDir,
+    isTrusted: identity && contacts ? (pubkey) => !!contacts.byPubkeyOrUndefined(pubkey) : undefined,
   });
 
   const knownPeers = new Set<string>();
@@ -183,6 +199,70 @@ async function main() {
     process.stdout.write(
       `\n#${msg.groupName} ${displayPeer(msg.from)}> ${msg.text}${tag}\n`,
     );
+    updatePrompt();
+    rl.prompt();
+  });
+
+  files?.on((ev) => {
+    switch (ev.kind) {
+      case "incoming-manifest": {
+        const who = displayPeer(ev.from);
+        const sizeKb = (ev.manifest.size / 1024).toFixed(1);
+        if (ev.autoAccepted) {
+          process.stdout.write(
+            `\n[file] incoming "${ev.manifest.name}" from ${who} (${sizeKb} KB) — auto-accepted\n`,
+          );
+        } else {
+          process.stdout.write(
+            `\n[file] incoming "${ev.manifest.name}" from ${who} (${sizeKb} KB) — /accept ${ev.manifest.fileId.slice(0, 8)} or /reject ${ev.manifest.fileId.slice(0, 8)}\n`,
+          );
+        }
+        break;
+      }
+      case "send-progress": {
+        const pct = Math.floor((ev.progress.sent / ev.progress.total) * 100);
+        if (ev.progress.sent === ev.progress.total || ev.progress.sent % 10 === 0) {
+          process.stdout.write(
+            `\r[file →] ${ev.progress.sent}/${ev.progress.total} (${pct}%) via ${ev.transport}        `,
+          );
+        }
+        break;
+      }
+      case "recv-progress": {
+        const pct = Math.floor((ev.received / ev.total) * 100);
+        if (ev.received === ev.total || ev.received % 10 === 0) {
+          process.stdout.write(
+            `\r[file ←] ${ev.received}/${ev.total} (${pct}%) from ${displayPeer(ev.from)}        `,
+          );
+        }
+        break;
+      }
+      case "send-done": {
+        const sizeKb = (ev.size / 1024).toFixed(1);
+        process.stdout.write(
+          `\n[file →] sent ${ev.fileId.slice(0, 8)} (${ev.chunks} chunks, ${sizeKb} KB) to ${displayPeer(ev.to)}\n`,
+        );
+        break;
+      }
+      case "recv-done": {
+        process.stdout.write(
+          `\n[file ←] received from ${displayPeer(ev.from)} → ${ev.path}\n`,
+        );
+        break;
+      }
+      case "send-failed": {
+        process.stdout.write(
+          `\n[file →] FAILED ${ev.fileId.slice(0, 8)}: ${ev.reason}\n`,
+        );
+        break;
+      }
+      case "recv-failed": {
+        process.stdout.write(
+          `\n[file ←] FAILED from ${displayPeer(ev.from)}: ${ev.reason}\n`,
+        );
+        break;
+      }
+    }
     updatePrompt();
     rl.prompt();
   });
@@ -312,6 +392,7 @@ async function main() {
   rl.on("close", async () => {
     await presencePub?.stop();
     presenceWatch?.close();
+    files?.close();
     if (groupMessenger) await groupMessenger.close();
     groupStore?.close();
     ratchetStore?.close();
@@ -702,6 +783,79 @@ async function main() {
       return;
     }
 
+    if (head === "send" && rest[0] && rest[1]) {
+      if (!files) {
+        console.log("(file transfer requires Nostr transport)");
+        return;
+      }
+      try {
+        const target = await resolvePeerArg(rest[0]);
+        const path = rest.slice(1).join(" ");
+        const fileId = await files.send(target, path);
+        console.log(`[file →] queued ${fileId.slice(0, 8)} → ${displayPeer(target)}`);
+      } catch (err) {
+        console.error("send failed:", (err as Error).message);
+      }
+      return;
+    }
+
+    if (head === "accept" && rest[0]) {
+      if (!files) {
+        console.log("(file transfer requires Nostr transport)");
+        return;
+      }
+      const partial = rest[0];
+      const match = files.active().find((a) => a.fileId.startsWith(partial));
+      if (!match) {
+        console.log(`(no pending transfer matching "${partial}")`);
+        return;
+      }
+      try {
+        files.accept(match.fileId);
+        console.log(`[file] accepted ${match.fileId.slice(0, 8)}`);
+      } catch (err) {
+        console.error("accept failed:", (err as Error).message);
+      }
+      return;
+    }
+
+    if (head === "reject" && rest[0]) {
+      if (!files) {
+        console.log("(file transfer requires Nostr transport)");
+        return;
+      }
+      const partial = rest[0];
+      const match = files.active().find((a) => a.fileId.startsWith(partial));
+      if (!match) {
+        console.log(`(no pending transfer matching "${partial}")`);
+        return;
+      }
+      const reason = rest.slice(1).join(" ") || "user declined";
+      files.reject(match.fileId, reason);
+      console.log(`[file] rejected ${match.fileId.slice(0, 8)}`);
+      return;
+    }
+
+    if (head === "files") {
+      if (!files) {
+        console.log("(file transfer requires Nostr transport)");
+        return;
+      }
+      const list = files.active();
+      if (list.length === 0) {
+        console.log("(no active transfers)");
+        return;
+      }
+      for (const f of list) {
+        const dir = f.direction === "send" ? "→" : "←";
+        const progress = f.received !== undefined ? ` ${f.received}/${f.total}` : "";
+        console.log(
+          `  ${f.fileId.slice(0, 8)} ${dir} ${displayPeer(f.peer)}  ${f.name}${progress}`,
+        );
+      }
+      return;
+    }
+
     if (head === "help" || head === "?") {
       console.log("/whoami                       show your identity");
       console.log("/contact list|add|rm          manage contacts");
@@ -714,6 +868,10 @@ async function main() {
       console.log("/peers                        list connected/known/online peers");
       console.log("/history [id] [n]             show recent messages");
       console.log("/group ...                    group commands (try /group)");
+      console.log("/send <peer> <path>           send a file (auto-routes P2P or relay)");
+      console.log("/accept <fileId>              accept an incoming file from non-contact");
+      console.log("/reject <fileId> [reason]     reject an incoming file");
+      console.log("/files                        list active transfers");
       console.log("/quit                         exit");
       return;
     }
