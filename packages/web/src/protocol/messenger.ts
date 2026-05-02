@@ -298,26 +298,24 @@ export class WebMessenger {
   }
 
   private broadcastRelayStatus(): void {
-    // Use SimplePool's public listConnectionStatus() — returns a Map<url,
-    // connected> covering relays the pool has *attempted* to connect.
+    // Use SimplePool's public listConnectionStatus() — returns Map<url,
+    // connected>. nostr-tools normalizes URLs (adds default scheme, appends
+    // trailing slash) so our raw config strings won't match the map keys
+    // by strict equality. Match on the normalized form instead.
     let open = 0;
-    let probed = 0;
     try {
       const status = this.pool.listConnectionStatus();
-      for (const url of this.opts.relays) {
-        if (!status.has(url)) continue;
-        probed += 1;
-        if (status.get(url) === true) open += 1;
+      const wanted = new Set(this.opts.relays.map(normalizeRelayUrl));
+      for (const [url, connected] of status) {
+        if (!wanted.has(normalizeRelayUrl(url))) continue;
+        if (connected) open += 1;
       }
     } catch {
       // listConnectionStatus may throw on older builds; fall back to 0.
     }
-    // If the pool hasn't been touched yet (no subscribe/publish has happened),
-    // listConnectionStatus is empty; report 0/total instead of 0/0.
-    const total = probed > 0 ? probed : this.opts.relays.length;
     for (const l of this.connectListeners) {
       try {
-        l(open, total);
+        l(open, this.opts.relays.length);
       } catch {
         // listener errors are isolated
       }
@@ -342,4 +340,25 @@ export class WebMessenger {
 function makeConversationAad(selfPubkey: string, peerPubkey: string): Uint8Array {
   const [a, b] = [selfPubkey, peerPubkey].sort();
   return new TextEncoder().encode(`${a}|${b}`);
+}
+
+/**
+ * Mirror nostr-tools' relay-URL normalization (default scheme, lowercased
+ * host, collapsed slashes, trailing slash on root). Without this, our raw
+ * "ws://localhost:7777" never matches the pool's stored
+ * "ws://localhost:7777/".
+ */
+function normalizeRelayUrl(input: string): string {
+  let s = input.trim();
+  if (!s.includes("://")) s = `wss://${s}`;
+  try {
+    const u = new URL(s);
+    if (u.protocol === "http:") u.protocol = "ws:";
+    else if (u.protocol === "https:") u.protocol = "wss:";
+    u.pathname = u.pathname.replace(/\/+/g, "/");
+    if (u.pathname === "/") u.pathname = "";
+    return `${u.protocol}//${u.host}${u.pathname}${u.pathname ? "" : "/"}`;
+  } catch {
+    return s;
+  }
 }
