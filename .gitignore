@@ -5,3 +5,5 @@ dist
 .DS_Store
 .tsbuildinfo
 infra/nostr-relay/data/
+packages/web/dist/
+packages/web/tsconfig.tsbuildinfo
