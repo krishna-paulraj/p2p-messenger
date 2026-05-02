@@ -3,13 +3,14 @@ import { useApp } from "../store/app";
 import { shortNpub, shortPubkey } from "../lib/colors";
 import { CopyButton } from "./CopyButton";
 import { RelaysPanel } from "./RelaysPanel";
+import { SettingsPanel } from "./SettingsPanel";
 
 export function Header() {
   const identity = useApp((s) => s.identity);
   const relayOpen = useApp((s) => s.relayOpen);
   const relayTotal = useApp((s) => s.relayUrls.length);
-  const reset = useApp((s) => s.resetIdentity);
   const [showRelays, setShowRelays] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   const allRelaysOk = relayOpen === relayTotal && relayTotal > 0;
 
@@ -57,18 +58,16 @@ export function Header() {
         </button>
         {identity && (
           <button
-            onClick={() => {
-              if (confirm("Reset identity? This deletes your local keys + history.")) {
-                void reset();
-              }
-            }}
+            onClick={() => setShowSettings(true)}
             className="rounded border border-slate-700 px-2 py-1 text-slate-400 transition hover:border-slate-500 hover:text-slate-200"
+            title="settings — view identity, copy nsec, reset"
           >
-            reset
+            settings
           </button>
         )}
       </div>
       {showRelays && <RelaysPanel onClose={() => setShowRelays(false)} />}
+      {showSettings && <SettingsPanel onClose={() => setShowSettings(false)} />}
     </header>
   );
 }

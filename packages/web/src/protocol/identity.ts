@@ -50,6 +50,11 @@ export function npubFor(hexPubkey: string): string {
   return nip19.npubEncode(hexPubkey);
 }
 
+/** Bech32-encoded private key (`nsec1…`). Treat the result like a password. */
+export function nsecFor(secretKey: Uint8Array): string {
+  return nip19.nsecEncode(secretKey);
+}
+
 function rehydrate(stored: StoredIdentity): WebIdentity {
   return {
     alias: stored.alias,
