@@ -55,6 +55,7 @@ export {
   type OfflineMessage,
   type OfflineMessengerOptions,
 } from "./nostr/offline-queue.js";
+export { RatchetStore } from "./nostr/ratchet/store.js";
 export {
   Messenger,
   type IncomingMessage,

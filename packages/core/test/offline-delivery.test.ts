@@ -15,6 +15,7 @@ import { join } from "node:path";
 import {
   DedupStore,
   OfflineMessenger,
+  RatchetStore,
   RelayPool,
   compareClocks,
   initCrypto,
@@ -37,12 +38,14 @@ async function main() {
   const alicePool = new RelayPool([RELAY_URL]);
   const aliceClock = loadClock(join(tmp, "clock", "alice.json"), aliceId.publicKey);
   const aliceDedup = new DedupStore(join(tmp, "dedup", "alice.json"));
+  const aliceRatchet = new RatchetStore({ dataDir: tmp, ownerAlias: "alice" });
   const aliceOffline = new OfflineMessenger({
     pool: alicePool,
     selfPubkey: aliceId.publicKey,
     selfSecret: aliceId.secretKey,
     dedup: aliceDedup,
     clock: aliceClock,
+    ratchetStore: aliceRatchet,
   });
   await aliceOffline.start();
 
@@ -57,6 +60,7 @@ async function main() {
   }
   saveClock(join(tmp, "clock", "alice.json"), aliceClock);
   await aliceOffline.close();
+  aliceRatchet.close();
   await alicePool.close();
 
   // Give relay a moment to fully persist
@@ -69,12 +73,14 @@ async function main() {
   const bobDedupPath = join(tmp, "dedup", "bob.json");
   let bobClock = loadClock(bobClockPath, bobId.publicKey);
   const bobDedup1 = new DedupStore(bobDedupPath);
+  const bobRatchet1 = new RatchetStore({ dataDir: tmp, ownerAlias: "bob" });
   const bobOffline1 = new OfflineMessenger({
     pool: bobPool,
     selfPubkey: bobId.publicKey,
     selfSecret: bobId.secretKey,
     dedup: bobDedup1,
     clock: bobClock,
+    ratchetStore: bobRatchet1,
   });
 
   const received1: { from: string; text: string; ts: number; clock: Record<string, number> }[] =
@@ -92,6 +98,7 @@ async function main() {
 
   saveClock(bobClockPath, bobClock);
   await bobOffline1.close();
+  bobRatchet1.close();
 
   if (received1.length !== 3) {
     console.error(`FAIL: expected 3 messages, got ${received1.length}`);
@@ -130,12 +137,14 @@ async function main() {
   console.log("[test] bob restarts — should NOT receive duplicates");
   bobClock = loadClock(bobClockPath, bobId.publicKey);
   const bobDedup2 = new DedupStore(bobDedupPath);
+  const bobRatchet2 = new RatchetStore({ dataDir: tmp, ownerAlias: "bob" });
   const bobOffline2 = new OfflineMessenger({
     pool: bobPool,
     selfPubkey: bobId.publicKey,
     selfSecret: bobId.secretKey,
     dedup: bobDedup2,
     clock: bobClock,
+    ratchetStore: bobRatchet2,
   });
 
   const received2: string[] = [];
@@ -143,6 +152,7 @@ async function main() {
   await bobOffline2.start();
   await new Promise((res) => setTimeout(res, 1200));
   await bobOffline2.close();
+  bobRatchet2.close();
   await bobPool.close();
 
   if (received2.length !== 0) {

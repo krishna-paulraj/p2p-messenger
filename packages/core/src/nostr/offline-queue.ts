@@ -1,10 +1,17 @@
 import type { Event as NostrEvent } from "nostr-tools/core";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 import { giftUnwrap, giftWrap } from "./gift-wrap.js";
 import { KINDS } from "./kinds.js";
 import type { RelayPool, SubscriptionHandle } from "./relay-pool.js";
 import { type Clock, VectorClock, compareClocks } from "./vector-clock.js";
 import { DedupStore } from "./dedup.js";
 import { makeLogger } from "../util/logger.js";
+import type { RatchetStore } from "./ratchet/store.js";
+import {
+  decrypt as drDecrypt,
+  encrypt as drEncrypt,
+  type Header as DrHeader,
+} from "./ratchet/double-ratchet.js";
 
 const log = makeLogger("offline-queue");
 
@@ -35,6 +42,8 @@ export type OfflineMessengerOptions = {
   dedup: DedupStore;
   /** Vector clock — initialize from persisted state if available. */
   clock: VectorClock;
+  /** Per-peer Double Ratchet state store. */
+  ratchetStore: RatchetStore;
   /** Lookback window in seconds for the initial drain on startup. */
   drainLookbackSeconds?: number;
   /** Backstop floor for created_at filter (default 30 days). */
@@ -147,7 +156,29 @@ export class OfflineMessenger {
     if (this.closed) throw new Error("OfflineMessenger is closed");
 
     const clock = this.opts.clock.tick();
-    const innerContent = JSON.stringify({ text, clock });
+    const drPlaintext = new TextEncoder().encode(JSON.stringify({ text, clock }));
+
+    // Get or initialize the Double Ratchet for this peer; encrypt under its
+    // current sending chain. Vector clock is part of the DR plaintext so it
+    // gets the same FS guarantees as the message body.
+    const state = this.opts.ratchetStore.getOrInit({
+      selfPubkeyHex: this.opts.selfPubkey,
+      selfSecret: this.opts.selfSecret,
+      peerPubkeyHex: toPubkey,
+    });
+    const aad = makeConversationAad(this.opts.selfPubkey, toPubkey);
+    const enc = drEncrypt(state, drPlaintext, aad);
+    this.opts.ratchetStore.touch(toPubkey);
+
+    const innerContent = JSON.stringify({
+      v: 2,
+      h: {
+        p: bytesToHex(enc.header.dhPub),
+        n: enc.header.counter,
+        pn: enc.header.prevChainCounter,
+      },
+      c: bytesToHex(enc.ciphertext),
+    });
 
     const wrap = giftWrap({
       innerKind: KINDS.CHAT_MESSAGE,
@@ -160,6 +191,7 @@ export class OfflineMessenger {
     log.debug("offline send published", {
       to: toPubkey.slice(0, 8),
       eventId: wrap.id,
+      counter: enc.header.counter,
       clock,
     });
     return { eventId: wrap.id, clock };
@@ -184,11 +216,64 @@ export class OfflineMessenger {
     if (!unwrapped) return;
     if (unwrapped.innerKind !== KINDS.CHAT_MESSAGE) return;
 
-    let parsed: { text?: unknown; clock?: unknown };
+    let envelope: {
+      v?: unknown;
+      h?: { p?: unknown; n?: unknown; pn?: unknown };
+      c?: unknown;
+    };
     try {
-      parsed = JSON.parse(unwrapped.innerContent);
+      envelope = JSON.parse(unwrapped.innerContent);
     } catch {
       log.warn("malformed chat content", { from: unwrapped.senderPubkey.slice(0, 8) });
+      return;
+    }
+    if (
+      envelope.v !== 2 ||
+      !envelope.h ||
+      typeof envelope.h.p !== "string" ||
+      typeof envelope.h.n !== "number" ||
+      typeof envelope.h.pn !== "number" ||
+      typeof envelope.c !== "string"
+    ) {
+      log.warn("unsupported chat envelope", {
+        from: unwrapped.senderPubkey.slice(0, 8),
+        version: envelope.v,
+      });
+      return;
+    }
+
+    // Decrypt via the per-peer Double Ratchet. Bootstrap on first contact —
+    // both sides derive identical initial state from static-static SK.
+    const state = this.opts.ratchetStore.getOrInit({
+      selfPubkeyHex: this.opts.selfPubkey,
+      selfSecret: this.opts.selfSecret,
+      peerPubkeyHex: unwrapped.senderPubkey,
+    });
+    const aad = makeConversationAad(this.opts.selfPubkey, unwrapped.senderPubkey);
+    const header: DrHeader = {
+      dhPub: hexToBytes(envelope.h.p),
+      counter: envelope.h.n,
+      prevChainCounter: envelope.h.pn,
+    };
+    let plaintext: Uint8Array;
+    try {
+      plaintext = drDecrypt(state, header, hexToBytes(envelope.c), aad);
+      this.opts.ratchetStore.touch(unwrapped.senderPubkey);
+    } catch (err) {
+      log.warn("ratchet decrypt failed", {
+        from: unwrapped.senderPubkey.slice(0, 8),
+        err: String(err),
+      });
+      return;
+    }
+
+    let parsed: { text?: unknown; clock?: unknown };
+    try {
+      parsed = JSON.parse(new TextDecoder().decode(plaintext));
+    } catch {
+      log.warn("malformed plaintext after ratchet decrypt", {
+        from: unwrapped.senderPubkey.slice(0, 8),
+      });
       return;
     }
     if (typeof parsed.text !== "string") return;
@@ -290,4 +375,14 @@ function sanitizeClock(raw: Record<string, unknown>): Clock {
     }
   }
   return out;
+}
+
+/**
+ * Conversation-binding AAD: stable across both peers (sorted pubkey pair).
+ * Used as additional authenticated data on the AEAD so a stolen ciphertext
+ * can't be decrypted in the context of any other conversation.
+ */
+function makeConversationAad(selfPubkey: string, peerPubkey: string): Uint8Array {
+  const [a, b] = [selfPubkey, peerPubkey].sort();
+  return new TextEncoder().encode(`${a}|${b}`);
 }

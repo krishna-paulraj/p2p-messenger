@@ -22,6 +22,7 @@ import {
   NostrSignaling,
   OfflineMessenger,
   Peer,
+  RatchetStore,
   RelayPool,
   initCrypto,
   loadClock,
@@ -82,12 +83,14 @@ async function main() {
   // ---- Bob sends two offline messages while alice is gone ----
   const bobOfflineDedup = new DedupStore(join(tmp, "dedup", "bob-offline-send.json"));
   const bobClock = loadClock(join(tmp, "clock", "bob.json"), bobId.publicKey);
+  const bobRatchet = new RatchetStore({ dataDir: tmp, ownerAlias: "bob" });
   const bobOffline = new OfflineMessenger({
     pool: bobPool,
     selfPubkey: bobId.publicKey,
     selfSecret: bobId.secretKey,
     dedup: bobOfflineDedup,
     clock: bobClock,
+    ratchetStore: bobRatchet,
   });
   await bobOffline.start();
   await bobOffline.send(aliceId.publicKey, "offline-1: are you there?");
@@ -117,12 +120,14 @@ async function main() {
 
   const aliceDedup = new DedupStore(join(tmp, "dedup", "alice.json"));
   const aliceClock = loadClock(join(tmp, "clock", "alice.json"), aliceId.publicKey);
+  const aliceRatchet = new RatchetStore({ dataDir: tmp, ownerAlias: "alice" });
   const aliceOffline = new OfflineMessenger({
     pool: alicePool2,
     selfPubkey: aliceId.publicKey,
     selfSecret: aliceId.secretKey,
     dedup: aliceDedup,
     clock: aliceClock,
+    ratchetStore: aliceRatchet,
   });
   const drained: string[] = [];
   aliceOffline.on((m) => drained.push(m.text));
@@ -139,9 +144,11 @@ async function main() {
   process.off("unhandledRejection", onError);
 
   await aliceOffline.close();
+  aliceRatchet.close();
   await alice2.close();
   await alicePool2.close();
   await bobOffline.close();
+  bobRatchet.close();
   await bob.close();
   await bobPool.close();
   rmSync(tmp, { recursive: true, force: true });
