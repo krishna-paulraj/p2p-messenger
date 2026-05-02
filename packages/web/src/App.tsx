@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Composer } from "./components/Composer";
 import { ContactList } from "./components/ContactList";
 import { Conversation } from "./components/Conversation";
+import { ConversationHeader } from "./components/ConversationHeader";
 import { Header } from "./components/Header";
 import { LoginPanel } from "./components/LoginPanel";
 import { loadIdentity } from "./db/store";
@@ -39,7 +40,8 @@ export function App() {
       <Header />
       <div className="flex flex-1 overflow-hidden">
         <ContactList />
-        <main className="flex flex-1 flex-col">
+        <main className="flex flex-1 flex-col bg-slate-950">
+          <ConversationHeader />
           <Conversation />
           <Composer />
         </main>

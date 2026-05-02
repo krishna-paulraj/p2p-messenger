@@ -9,19 +9,48 @@
     height: 100%;
   }
 
+  /* Inter via system fallback when not loaded locally — UI stays sharp. */
+  body {
+    font-feature-settings:
+      "ss01" on,
+      "cv11" on;
+    text-rendering: optimizeLegibility;
+  }
+
   /* Slim scrollbars across the app */
   *::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
   }
   *::-webkit-scrollbar-track {
     background: transparent;
   }
   *::-webkit-scrollbar-thumb {
-    background: rgb(51 65 85 / 0.6);
+    background: rgb(51 65 85 / 0.5);
     border-radius: 9999px;
   }
   *::-webkit-scrollbar-thumb:hover {
     background: rgb(71 85 105 / 0.8);
+  }
+}
+
+@layer components {
+  /* Subtle gradient avatar — used for contact list and conversation header. */
+  .avatar-gradient {
+    background-image: linear-gradient(
+      135deg,
+      rgb(15 23 42) 0%,
+      rgb(30 41 59) 100%
+    );
+  }
+
+  /* Glass-y panel surface used on popovers. */
+  .surface-panel {
+    background-image: linear-gradient(
+      180deg,
+      rgb(15 23 42 / 0.95) 0%,
+      rgb(15 23 42 / 0.98) 100%
+    );
+    backdrop-filter: blur(8px);
   }
 }

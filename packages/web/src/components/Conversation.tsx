@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useApp } from "../store/app";
-import { formatTime, peerColorClass } from "../lib/colors";
+import type { StoredMessage } from "../db/store";
+import { peerColorClass } from "../lib/colors";
 
 export function Conversation() {
   const activePeer = useApp((s) => s.activePeer);
@@ -14,7 +15,6 @@ export function Conversation() {
     ? Object.values(contacts).find((c) => c.pubkey === activePeer)
     : undefined;
 
-  // Auto-scroll to bottom on new messages.
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -22,50 +22,110 @@ export function Conversation() {
 
   if (!activePeer) {
     return (
-      <div className="flex flex-1 items-center justify-center text-slate-500">
-        <div className="text-center">
-          <div className="text-sm">select a contact to start chatting</div>
-          <div className="mt-1 text-xs text-slate-600">
-            messages are end-to-end encrypted with NIP-44 + Double Ratchet
+      <div className="flex flex-1 items-center justify-center px-6 text-slate-500">
+        <div className="max-w-sm text-center">
+          <div className="mb-2 text-base font-semibold text-slate-200">
+            select a contact
+          </div>
+          <div className="text-sm leading-relaxed text-slate-500">
+            messages are end-to-end encrypted with NIP-44 + a Signal-style
+            Double Ratchet. WebRTC P2P data channels available with{" "}
+            <span className="text-slate-300">dial p2p</span> for low-latency
+            messaging.
           </div>
         </div>
       </div>
     );
   }
 
+  if (log.length === 0) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-sm text-slate-600">
+        no messages yet — say hi to {peerContact?.alias ?? "this peer"}
+      </div>
+    );
+  }
+
+  // Group consecutive messages from the same sender.
+  const groups: StoredMessage[][] = [];
+  for (const m of log) {
+    const last = groups[groups.length - 1];
+    if (
+      last &&
+      last[0].direction === m.direction &&
+      m.ts - last[last.length - 1].ts < 5 * 60 // 5-min coalesce
+    ) {
+      last.push(m);
+    } else {
+      groups.push([m]);
+    }
+  }
+
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4">
-      {log.length === 0 ? (
-        <div className="flex h-full items-center justify-center text-slate-600 text-sm">
-          (no messages yet — say hi to {peerContact?.alias ?? "this peer"})
-        </div>
-      ) : (
-        <ul className="space-y-2">
-          {log.map((m, i) => {
-            const isSelf = m.direction === "out";
-            const senderName = isSelf
-              ? identity?.alias ?? "you"
-              : peerContact?.alias ?? "peer";
-            const senderColor = isSelf
-              ? "text-cyan-300"
-              : peerColorClass(activePeer);
-            const sourceTag = m.source === "relay" ? "via relay" : "";
-            return (
-              <li key={i} className="leading-relaxed">
-                <span className="text-[10px] text-slate-600">{formatTime(m.ts)}</span>
-                <span className="mx-2"> </span>
-                <span className={`text-xs font-semibold ${senderColor}`}>
-                  {senderName}
+    <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4">
+      <div className="mx-auto max-w-3xl space-y-4">
+        {groups.map((group, gi) => {
+          const isSelf = group[0].direction === "out";
+          const senderName = isSelf
+            ? identity?.alias ?? "you"
+            : peerContact?.alias ?? "peer";
+          const senderColor = isSelf ? "text-cyan-300" : peerColorClass(activePeer);
+          return (
+            <div
+              key={gi}
+              className={`flex flex-col ${isSelf ? "items-end" : "items-start"}`}
+            >
+              <div
+                className={`mb-1 flex items-center gap-2 text-[11px] ${
+                  isSelf ? "flex-row-reverse" : ""
+                }`}
+              >
+                <span className={`font-semibold ${senderColor}`}>{senderName}</span>
+                <span className="text-slate-600">
+                  {fmtTime(group[group.length - 1].ts)}
                 </span>
-                <span className="ml-2 text-sm text-slate-100">{m.text}</span>
-                {sourceTag && (
-                  <span className="ml-2 text-[10px] text-slate-600">[{sourceTag}]</span>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
+              </div>
+              <div className="flex max-w-[80%] flex-col gap-1">
+                {group.map((m, mi) => {
+                  const isSystem = m.text.startsWith("[") && m.text.endsWith("]");
+                  if (isSystem) {
+                    return (
+                      <div
+                        key={mi}
+                        className="self-center rounded-full border border-slate-800 bg-slate-900/60 px-3 py-0.5 text-[11px] text-slate-500"
+                      >
+                        {m.text.replace(/^\[|\]$/g, "")}
+                      </div>
+                    );
+                  }
+                  return (
+                    <div
+                      key={mi}
+                      className={`whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-sm ${
+                        isSelf
+                          ? "bg-cyan-500/10 text-slate-100 ring-1 ring-cyan-500/30"
+                          : "bg-slate-800/70 text-slate-100 ring-1 ring-slate-700/50"
+                      }`}
+                    >
+                      {m.text}
+                      {m.source === "relay" && (
+                        <span className="ml-2 text-[10px] text-slate-500">
+                          via relay
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
+}
+
+function fmtTime(ts: number): string {
+  const d = new Date(ts * 1000);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }

@@ -5,11 +5,13 @@
  * Double Ratchet, kinds) but talks to nostr-tools' SimplePool directly and
  * persists state to IndexedDB instead of fs.
  *
- * Two paths today:
- *   - send(toPubkey, text): DR-encrypts → NIP-17 gift-wrap → publish.
- *   - subscribe → unwrap kind-1059 events → DR-decrypt → emit messages.
- *
- * No WebRTC P2P in v1 (browser-to-browser data channels deferred to v2).
+ * Two inner-kind-discriminated paths share the same gift-wrap envelope:
+ *   - kind 14 (CHAT_MESSAGE) → DR-encrypted chat plaintext, emitted via
+ *     `onMessage`. This is the relay fallback path.
+ *   - kind 21059 (P2P_SIGNAL) → JSON-encoded WebRTC signaling payload,
+ *     emitted via `onSignal`. Used by WebPeer to bootstrap a browser-side
+ *     P2P data channel; identical wire format to the CLI's NostrSignaling
+ *     so a CLI alice and a browser bob can complete a handshake.
  */
 
 import { SimplePool } from "nostr-tools/pool";
@@ -58,6 +60,25 @@ export type MessengerOptions = {
 
 export type SendResult = { eventId: string };
 
+/**
+ * WebRTC signaling payload arriving from the relay. Emitted to listeners
+ * registered via `onSignal` — opaque to the messenger; consumed by WebPeer.
+ */
+export type IncomingSignal = {
+  from: string;
+  payload: unknown;
+  ts: number;
+  eventId: string;
+};
+
+/**
+ * Reject WebRTC signaling rumors older than this many seconds. Five minutes
+ * is generous for clock skew + relay latency while reliably ignoring replays
+ * from prior sessions (NIP-59 randomizes the gift-wrap created_at by ±2 days
+ * for unlinkability, but the inner rumor preserves the real send time).
+ */
+const SIGNAL_FRESHNESS_SECONDS = 5 * 60;
+
 const GIFT_WRAP_BACKDATE = 2 * 24 * 60 * 60;
 const DEFAULT_LOOKBACK = 7 * 24 * 60 * 60;
 const MAX_LOOKBACK = 30 * 24 * 60 * 60;
@@ -73,6 +94,8 @@ export class WebMessenger {
   private dedupSeen = new Set<string>();
   private subCloser?: { close: () => void };
   private listeners = new Set<(msg: IncomingMessage) => void>();
+  private signalListeners = new Set<(s: IncomingSignal) => void>();
+  private signalSeenIds = new Set<string>();
   private connectListeners = new Set<(open: number, total: number) => void>();
   private cursorMaxSeen = 0;
   private flushTimer?: number;
@@ -179,6 +202,36 @@ export class WebMessenger {
     return () => this.connectListeners.delete(fn);
   }
 
+  onSignal(fn: (s: IncomingSignal) => void): () => void {
+    this.signalListeners.add(fn);
+    return () => this.signalListeners.delete(fn);
+  }
+
+  /**
+   * Publish a WebRTC signaling payload (offer / answer / ICE) to the peer
+   * via a NIP-59 gift-wrapped kind-21059 (P2P_SIGNAL) event. Same envelope
+   * that the CLI's NostrSignaling uses, so a CLI peer can decrypt and
+   * dispatch to its own Peer state machine.
+   */
+  async sendSignal(toPubkey: string, payload: unknown): Promise<SendResult> {
+    const wrap = giftWrap({
+      innerKind: KINDS.P2P_SIGNAL,
+      innerContent: JSON.stringify(payload),
+      senderSecret: this.opts.selfSecret,
+      recipientPubkey: toPubkey,
+    });
+    const results = await Promise.allSettled(
+      this.pool.publish(this.opts.relays, wrap),
+    );
+    const ok = results.filter((r) => r.status === "fulfilled").length;
+    if (ok === 0) {
+      throw new Error(
+        `signal publish rejected by all ${this.opts.relays.length} relays`,
+      );
+    }
+    return { eventId: wrap.id };
+  }
+
   async send(toPubkey: string, text: string): Promise<SendResult> {
     // DR-encrypt the chat plaintext (text + minimal metadata) under the
     // per-peer ratchet. Mirrors the OfflineMessenger v=2 envelope so a CLI
@@ -229,6 +282,13 @@ export class WebMessenger {
     if (this.dedupSeen.has(event.id)) return;
     const unwrapped = giftUnwrap(event, this.opts.selfSecret);
     if (!unwrapped) return;
+
+    // Dispatch by inner kind. P2P_SIGNAL flows out to WebPeer (live, never
+    // touches DR / chat path); CHAT_MESSAGE continues into the chat pipeline.
+    if (unwrapped.innerKind === KINDS.P2P_SIGNAL) {
+      this.handleSignalRumor(event.id, unwrapped.senderPubkey, unwrapped.innerContent, unwrapped.rumorCreatedAt);
+      return;
+    }
     if (unwrapped.innerKind !== KINDS.CHAT_MESSAGE) return;
 
     let envelope: {
@@ -298,6 +358,50 @@ export class WebMessenger {
         l(msg);
       } catch {
         // listener errors are isolated
+      }
+    }
+  }
+
+  /**
+   * Handle a P2P_SIGNAL inner rumor. Three layers of defense against
+   * replays from a previous browser session: in-memory id ring, a freshness
+   * window on the rumor's real created_at (NIP-59 randomizes the wrap's
+   * outer ts by ±2 days for unlinkability — only the rumor preserves truth),
+   * and per-handler defensive try/catch so signaling errors never crash
+   * the messenger.
+   */
+  private handleSignalRumor(
+    eventId: string,
+    sender: string,
+    innerContent: string,
+    rumorTs: number,
+  ): void {
+    if (this.signalSeenIds.has(eventId)) return;
+    this.signalSeenIds.add(eventId);
+    if (this.signalSeenIds.size > 1024) {
+      // Trim oldest by reconstructing — Set preserves insertion order in JS.
+      const trimmed = Array.from(this.signalSeenIds).slice(-512);
+      this.signalSeenIds = new Set(trimmed);
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const age = now - rumorTs;
+    if (age > SIGNAL_FRESHNESS_SECONDS || age < -SIGNAL_FRESHNESS_SECONDS) {
+      return; // stale or future-dated — drop
+    }
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(innerContent);
+    } catch {
+      return;
+    }
+    const signal: IncomingSignal = { from: sender, payload, ts: rumorTs, eventId };
+    for (const l of this.signalListeners) {
+      try {
+        l(signal);
+      } catch (err) {
+        console.warn("[WebMessenger] signal listener error:", err);
       }
     }
   }
