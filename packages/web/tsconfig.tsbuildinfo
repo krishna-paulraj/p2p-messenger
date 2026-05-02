@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/db/store.ts","./src/protocol/identity.ts","./src/protocol/messenger.ts"],"version":"5.9.3"}
