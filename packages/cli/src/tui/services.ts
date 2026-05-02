@@ -16,6 +16,7 @@ import {
   Peer,
   PresencePublisher,
   PresenceWatcher,
+  RatchetStore,
   RelayPool,
   type SignalingTransport,
   initCrypto,
@@ -46,6 +47,7 @@ export type Session = {
   presenceWatch?: PresenceWatcher;
   groupStore?: GroupStore;
   groupMessenger?: GroupMessenger;
+  ratchetStore?: RatchetStore;
   messageStore: MessageStore;
   clockPath?: string;
   cleanup: () => Promise<void>;
@@ -87,14 +89,17 @@ export async function startSession(opts: SessionOptions): Promise<Session> {
         })
       : undefined;
 
+  const ratchetStore = identity ? new RatchetStore({ dataDir, ownerAlias: opts.alias }) : undefined;
+
   const offline =
-    identity && pool && clock && dedup
+    identity && pool && clock && dedup && ratchetStore
       ? new OfflineMessenger({
           pool,
           selfPubkey: identity.publicKey,
           selfSecret: identity.secretKey,
           dedup,
           clock,
+          ratchetStore,
         })
       : undefined;
 
@@ -123,6 +128,7 @@ export async function startSession(opts: SessionOptions): Promise<Session> {
     presenceWatch?.close();
     if (groupMessenger) await groupMessenger.close();
     groupStore?.close();
+    ratchetStore?.close();
     if (clock && clockPath) saveClock(clockPath, clock);
     dedup?.close();
     await messenger.close();
@@ -144,6 +150,7 @@ export async function startSession(opts: SessionOptions): Promise<Session> {
     presenceWatch,
     groupStore,
     groupMessenger,
+    ratchetStore,
     messageStore,
     clockPath,
     cleanup,

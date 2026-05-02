@@ -12,6 +12,7 @@ import {
   PresencePublisher,
   PresenceWatcher,
   type Profile,
+  RatchetStore,
   fetchProfiles,
   initCrypto,
   loadClock,
@@ -98,14 +99,17 @@ async function main() {
         })
       : undefined;
 
+  const ratchetStore = identity ? new RatchetStore({ dataDir, ownerAlias: alias }) : undefined;
+
   const offline =
-    identity && pool && clock && dedup
+    identity && pool && clock && dedup && ratchetStore
       ? new OfflineMessenger({
           pool,
           selfPubkey: identity.publicKey,
           selfSecret: identity.secretKey,
           dedup,
           clock,
+          ratchetStore,
         })
       : undefined;
 
@@ -310,6 +314,7 @@ async function main() {
     presenceWatch?.close();
     if (groupMessenger) await groupMessenger.close();
     groupStore?.close();
+    ratchetStore?.close();
     if (clock && clockPath) saveClock(clockPath, clock);
     dedup?.close();
     await messenger.close();
