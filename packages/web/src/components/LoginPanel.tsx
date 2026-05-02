@@ -4,7 +4,6 @@ import { useApp } from "../store/app";
 export function LoginPanel() {
   const init = useApp((s) => s.init);
   const [alias, setAlias] = useState("");
-  const [relays, setRelays] = useState("ws://localhost:7777");
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -17,11 +16,9 @@ export function LoginPanel() {
     setError(null);
     setWorking(true);
     try {
-      const relayUrls = relays
-        .split(",")
-        .map((r) => r.trim())
-        .filter(Boolean);
-      await init({ alias: alias.trim(), relayUrls });
+      // Use the store's built-in DEFAULT_RELAYS (two public relays). Users
+      // can add or remove relays at runtime from the header.
+      await init({ alias: alias.trim() });
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -52,16 +49,6 @@ export function LoginPanel() {
               className="w-full rounded bg-slate-900 px-3 py-2 text-slate-100 ring-1 ring-slate-800 focus:outline-none focus:ring-cyan-500/50"
             />
           </div>
-          <div>
-            <label className="mb-1 block text-xs uppercase tracking-wider text-slate-500">
-              relays (comma-separated)
-            </label>
-            <input
-              value={relays}
-              onChange={(e) => setRelays(e.target.value)}
-              className="w-full rounded bg-slate-900 px-3 py-2 text-xs text-slate-100 ring-1 ring-slate-800 focus:outline-none focus:ring-cyan-500/50"
-            />
-          </div>
           {error && <div className="text-sm text-rose-400">{error}</div>}
           <button
             type="submit"
@@ -75,7 +62,10 @@ export function LoginPanel() {
         <div className="rounded border border-slate-800 bg-slate-900/40 p-3 text-xs text-slate-500">
           your secret key is stored only in this browser's IndexedDB. it never
           leaves the device. messages are end-to-end encrypted with NIP-44 + a
-          Signal-style Double Ratchet.
+          Signal-style Double Ratchet. defaults to the public Nostr relays{" "}
+          <code className="text-slate-300">relay.damus.io</code> and{" "}
+          <code className="text-slate-300">nos.lol</code>; you can add or remove
+          relays from the header after signing in.
         </div>
       </div>
     </div>

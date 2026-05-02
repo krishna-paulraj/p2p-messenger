@@ -32,7 +32,7 @@ import {
 } from "../protocol/identity";
 import { WebMessenger, type IncomingMessage } from "../protocol/messenger";
 
-const DEFAULT_RELAYS = ["ws://localhost:7777"];
+const DEFAULT_RELAYS = ["wss://relay.damus.io", "wss://nos.lol"];
 
 let messengerRef: WebMessenger | undefined;
 
