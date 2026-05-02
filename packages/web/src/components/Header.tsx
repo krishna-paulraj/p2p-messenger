@@ -1,5 +1,6 @@
 import { useApp } from "../store/app";
 import { shortNpub, shortPubkey } from "../lib/colors";
+import { CopyButton } from "./CopyButton";
 
 export function Header() {
   const identity = useApp((s) => s.identity);
@@ -20,16 +21,19 @@ export function Header() {
       <div className="flex items-center gap-4 text-xs text-slate-400">
         {identity && (
           <>
-            <div>
-              <span className="text-slate-500">alias</span>{" "}
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-500">alias</span>
               <span className="text-slate-200">{identity.alias}</span>
+              <CopyButton value={identity.alias} label="copy alias" />
             </div>
-            <div className="hidden md:block">
-              <span className="text-slate-500">npub</span>{" "}
+            <div className="hidden items-center gap-1.5 md:flex">
+              <span className="text-slate-500">npub</span>
               <span className="text-slate-300">{shortNpub(identity.npub)}</span>
+              <CopyButton value={identity.npub} label="copy npub" />
             </div>
-            <div className="hidden lg:block text-slate-500">
+            <div className="hidden items-center gap-1.5 text-slate-500 lg:flex">
               ({shortPubkey(identity.publicKey)})
+              <CopyButton value={identity.publicKey} label="copy hex pubkey" />
             </div>
           </>
         )}
