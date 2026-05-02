@@ -57,6 +57,16 @@ export {
 } from "./nostr/offline-queue.js";
 export { RatchetStore } from "./nostr/ratchet/store.js";
 export {
+  initRatchet,
+  encrypt as drEncrypt,
+  decrypt as drDecrypt,
+  serializeState as serializeRatchetState,
+  deserializeState as deserializeRatchetState,
+  type RatchetState,
+  type Header as DrHeader,
+  type SerializedState,
+} from "./nostr/ratchet/double-ratchet.js";
+export {
   FileTransferManager,
   type FileTransferOptions,
   type TransferEvent,
