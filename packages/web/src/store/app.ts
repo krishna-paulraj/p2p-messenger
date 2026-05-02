@@ -27,6 +27,7 @@ import {
 import {
   decodePeerRef,
   getOrCreateIdentity,
+  importIdentity,
   npubFor,
   type WebIdentity,
 } from "../protocol/identity";
@@ -45,7 +46,13 @@ export type AppState = {
   relayUrls: string[];
   relayOpen: number;
 
-  init(opts: { alias: string; relayUrls?: string[] }): Promise<void>;
+  init(opts: {
+    alias: string;
+    relayUrls?: string[];
+    /** When set, import this private key (nsec1… or 64-char hex) instead of
+     *  generating a fresh one. Replaces any pre-existing identity. */
+    importSecret?: string;
+  }): Promise<void>;
   setActivePeer(pubkey: string | undefined): void;
   addContact(alias: string, ref: string, note?: string): Promise<StoredContact>;
   removeContact(alias: string): Promise<void>;
@@ -64,9 +71,11 @@ export const useApp = create<AppState>((set, get) => ({
   relayUrls: DEFAULT_RELAYS,
   relayOpen: 0,
 
-  async init({ alias, relayUrls }) {
+  async init({ alias, relayUrls, importSecret }) {
     if (messengerRef) return; // already initialized in a prior mount
-    const identity = await getOrCreateIdentity(alias);
+    const identity = importSecret
+      ? await importIdentity({ alias, secret: importSecret })
+      : await getOrCreateIdentity(alias);
     const contacts = await loadContacts();
     const messages = await loadMessages();
     // Persisted relay list (set in past sessions) wins over the LoginPanel
