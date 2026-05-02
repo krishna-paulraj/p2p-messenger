@@ -11,6 +11,7 @@ A serverless, end-to-end encrypted messenger that combines **WebRTC for low-late
 - [x] **Phase 4** — group chats with Signal-style Sender Keys (HKDF chain ratchet, member-leave rotation)
 - [x] **Phase 5** — Signal-style Double Ratchet on the 1:1 offline (NIP-17) path: per-message FS via HKDF symmetric ratchet, post-compromise security via DH ratchet on direction flip
 - [x] **Phase 6** — hybrid file transfer: WebRTC SecureChannel (multiplexed data channel, low-latency, native backpressure) when peers are P2P-connected; NIP-17 store-and-forward via relays otherwise. BLAKE3 chunk hashes + Merkle root, AEAD chunk auth, atomic rename on completion.
+- [x] **Phase 7** — browser web client (Vite + React + Tailwind + Zustand): identity in IndexedDB, contacts, 1:1 chat over Nostr relay with the same NIP-17 + Double Ratchet stack as the CLI. Cross-platform: a CLI user and a browser user can chat with each other.
 
 ## Architecture
 
@@ -134,6 +135,45 @@ pnpm chat --id alice --signal nostr://localhost:7777
 pnpm chat --id bob --signal nostr://localhost:7777
 # bob sees: alice> ping while you were out (via relay)
 ```
+
+### Web client demo
+
+```bash
+# 1. start the local relay (or skip and use a public one)
+pnpm relay:up
+
+# 2. dev server with HMR
+pnpm web:dev
+# → http://localhost:5173
+
+# (or build + preview the production bundle)
+pnpm web:build && pnpm web:preview
+```
+
+Open the URL, pick an alias, click **create identity & connect**. The
+browser generates a fresh secp256k1 keypair, persists it in IndexedDB,
+and connects to the relays you configured. Add a contact by pasting
+their npub (you can get the CLI user's npub from `pnpm chat:tui --id alice` startup output).
+
+The browser ↔ CLI flow is fully interoperable: both speak NIP-17 +
+Double Ratchet over the same v=2 envelope, so the wire format is
+identical. A message sent in the browser arrives in the CLI's
+scrollback and vice versa.
+
+Code: `packages/web/src/`
+
+- `protocol/messenger.ts` — `WebMessenger` class wrapping `nostr-tools`'
+  `SimplePool` with the same gift-wrap + DR pipeline as the Node
+  `OfflineMessenger`.
+- `db/store.ts` — IndexedDB persistence (identity, contacts, vector
+  clock, dedup ring, ratchet states, message history) via `idb-keyval`.
+- `store/app.ts` — Zustand global state.
+- `components/` — `Header`, `LoginPanel`, `ContactList`, `Conversation`,
+  `Composer`. Tailwind dark-mode UI.
+
+The browser uses `@p2p/core/browser` (a subpath export that re-exports
+only the pure-crypto + protocol parts of core), so file-transfer and
+WebRTC modules with Node-only deps don't end up in the browser bundle.
 
 ### File transfer demo
 
