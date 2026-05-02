@@ -36,22 +36,35 @@ export function deriveSessionKeys(
 
 const NONCE_LEN = 24;
 
-export function encrypt(plaintext: string, key: Uint8Array): Uint8Array {
+/**
+ * Encrypt arbitrary bytes under an XChaCha20-Poly1305 key. Wire layout is
+ * `nonce || ciphertext+tag` — the receiver knows the nonce length is always
+ * NONCE_LEN. Callers should treat each call's nonce as one-shot; never reuse
+ * (nonce, key) tuples.
+ */
+export function encryptBytes(plaintext: Uint8Array, key: Uint8Array): Uint8Array {
   const nonce = randomBytes(NONCE_LEN);
   const cipher = xchacha20poly1305(key, nonce);
-  const ct = cipher.encrypt(new TextEncoder().encode(plaintext));
+  const ct = cipher.encrypt(plaintext);
   const out = new Uint8Array(nonce.length + ct.length);
   out.set(nonce, 0);
   out.set(ct, nonce.length);
   return out;
 }
 
-export function decrypt(payload: Uint8Array, key: Uint8Array): string {
+export function decryptBytes(payload: Uint8Array, key: Uint8Array): Uint8Array {
   const nonce = payload.subarray(0, NONCE_LEN);
   const ct = payload.subarray(NONCE_LEN);
   const cipher = xchacha20poly1305(key, nonce);
-  const plain = cipher.decrypt(ct);
-  return new TextDecoder().decode(plain);
+  return cipher.decrypt(ct);
+}
+
+export function encrypt(plaintext: string, key: Uint8Array): Uint8Array {
+  return encryptBytes(new TextEncoder().encode(plaintext), key);
+}
+
+export function decrypt(payload: Uint8Array, key: Uint8Array): string {
+  return new TextDecoder().decode(decryptBytes(payload, key));
 }
 
 export function toBase64(bytes: Uint8Array): string {

@@ -12,6 +12,8 @@ import {
   encrypt as drEncrypt,
   type Header as DrHeader,
 } from "./ratchet/double-ratchet.js";
+import type { WireFileFrame } from "../file/types.js";
+import { FILE_CONTENT_TYPES } from "../file/types.js";
 
 const log = makeLogger("offline-queue");
 
@@ -32,6 +34,16 @@ export type OfflineMessage = {
    * after EOSE. UI may render these differently.
    */
   fromDrain: boolean;
+};
+
+export type IncomingFileFrame = {
+  frame: WireFileFrame;
+  /** Sender pubkey (verified via NIP-44 unwrap). */
+  from: string;
+  /** Inner rumor created_at (UNIX seconds). */
+  ts: number;
+  /** Underlying gift-wrap event id. */
+  eventId: string;
 };
 
 export type OfflineMessengerOptions = {
@@ -85,6 +97,7 @@ export class OfflineMessenger {
   private opts: OfflineMessengerOptions;
   private sub?: SubscriptionHandle;
   private listeners = new Set<(msg: OfflineMessage) => void>();
+  private fileFrameListeners = new Set<(frame: IncomingFileFrame) => void>();
   private started = false;
   private closed = false;
   private cursorMaxSeen = 0;
@@ -102,6 +115,50 @@ export class OfflineMessenger {
   on(listener: (msg: OfflineMessage) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  /** Subscribe to incoming file-transfer frames (manifest, chunks, ack, abort, etc.). */
+  onFileFrame(listener: (f: IncomingFileFrame) => void): () => void {
+    this.fileFrameListeners.add(listener);
+    return () => this.fileFrameListeners.delete(listener);
+  }
+
+  /**
+   * Publish a file-transfer frame on the relay path. Same DR-encrypted
+   * envelope as a chat message, just with a typed inner JSON. Used by the
+   * FileTransferManager to send chunks over the relay when no P2P channel
+   * is available.
+   */
+  async sendFileFrame(toPubkey: string, frame: WireFileFrame): Promise<{ eventId: string }> {
+    if (!this.started) throw new Error("OfflineMessenger.sendFileFrame before start()");
+    if (this.closed) throw new Error("OfflineMessenger is closed");
+    const drPlaintext = new TextEncoder().encode(JSON.stringify(frame));
+    const state = this.opts.ratchetStore.getOrInit({
+      selfPubkeyHex: this.opts.selfPubkey,
+      selfSecret: this.opts.selfSecret,
+      peerPubkeyHex: toPubkey,
+    });
+    const aad = makeConversationAad(this.opts.selfPubkey, toPubkey);
+    const enc = drEncrypt(state, drPlaintext, aad);
+    this.opts.ratchetStore.touch(toPubkey);
+    const innerContent = JSON.stringify({
+      v: 2,
+      h: {
+        p: bytesToHex(enc.header.dhPub),
+        n: enc.header.counter,
+        pn: enc.header.prevChainCounter,
+      },
+      c: bytesToHex(enc.ciphertext),
+    });
+    const wrap = giftWrap({
+      innerKind: KINDS.CHAT_MESSAGE,
+      innerContent,
+      innerTags: [["p", toPubkey]],
+      senderSecret: this.opts.selfSecret,
+      recipientPubkey: toPubkey,
+    });
+    await this.opts.pool.publish(wrap);
+    return { eventId: wrap.id };
   }
 
   async start(): Promise<void> {
@@ -267,7 +324,7 @@ export class OfflineMessenger {
       return;
     }
 
-    let parsed: { text?: unknown; clock?: unknown };
+    let parsed: { text?: unknown; clock?: unknown; type?: unknown };
     try {
       parsed = JSON.parse(new TextDecoder().decode(plaintext));
     } catch {
@@ -276,11 +333,6 @@ export class OfflineMessenger {
       });
       return;
     }
-    if (typeof parsed.text !== "string") return;
-    const clock: Clock =
-      parsed.clock && typeof parsed.clock === "object"
-        ? sanitizeClock(parsed.clock as Record<string, unknown>)
-        : {};
 
     // Persistence-side bookkeeping is fire-and-forget — independent of when
     // we choose to surface the message to the consumer.
@@ -289,6 +341,34 @@ export class OfflineMessenger {
       this.cursorMaxSeen = unwrapped.rumorCreatedAt;
       this.opts.dedup.setDrainedAt(this.cursorMaxSeen);
     }
+
+    // Dispatch by inner content shape: file-transfer frames have a
+    // `type: "p2p-file-..."` discriminator; chat messages have a `text` field.
+    if (typeof parsed.type === "string" && isFileFrameType(parsed.type)) {
+      const frame = parsed as unknown as WireFileFrame;
+      const incoming: IncomingFileFrame = {
+        frame,
+        from: unwrapped.senderPubkey,
+        ts: unwrapped.rumorCreatedAt,
+        eventId: event.id,
+      };
+      // File frames bypass the chat drain buffer — chunks self-order via
+      // their indices, so we surface them live as they decrypt.
+      for (const l of this.fileFrameListeners) {
+        try {
+          l(incoming);
+        } catch (err) {
+          log.error("file-frame listener threw", { err: String(err) });
+        }
+      }
+      return;
+    }
+
+    if (typeof parsed.text !== "string") return;
+    const clock: Clock =
+      parsed.clock && typeof parsed.clock === "object"
+        ? sanitizeClock(parsed.clock as Record<string, unknown>)
+        : {};
 
     const msg: OfflineMessage = {
       from: unwrapped.senderPubkey,
@@ -385,4 +465,9 @@ function sanitizeClock(raw: Record<string, unknown>): Clock {
 function makeConversationAad(selfPubkey: string, peerPubkey: string): Uint8Array {
   const [a, b] = [selfPubkey, peerPubkey].sort();
   return new TextEncoder().encode(`${a}|${b}`);
+}
+
+const FILE_FRAME_TYPES = new Set<string>(Object.values(FILE_CONTENT_TYPES));
+function isFileFrameType(t: string): boolean {
+  return FILE_FRAME_TYPES.has(t);
 }

@@ -1,4 +1,4 @@
-export { Peer, type PeerOptions } from "./peer.js";
+export { Peer, type PeerOptions, type SecureChannel } from "./peer.js";
 export { initCrypto } from "./crypto.js";
 export {
   type SignalingTransport,
@@ -56,6 +56,21 @@ export {
   type OfflineMessengerOptions,
 } from "./nostr/offline-queue.js";
 export { RatchetStore } from "./nostr/ratchet/store.js";
+export {
+  FileTransferManager,
+  type FileTransferOptions,
+  type TransferEvent,
+} from "./file/transfer.js";
+export {
+  FILE_CHUNK_SIZE,
+  FILE_MAX_BYTES,
+  FILE_CONTENT_TYPES,
+  type WireManifest,
+  type WireChunk,
+  type WireFileFrame,
+  type FileContentType,
+} from "./file/types.js";
+export type { IncomingFileFrame } from "./nostr/offline-queue.js";
 export {
   Messenger,
   type IncomingMessage,
