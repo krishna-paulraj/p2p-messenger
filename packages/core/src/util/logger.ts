@@ -7,8 +7,15 @@ type Level = "debug" | "info" | "warn" | "error";
 const ORDER: Record<Level, number> = { debug: 10, info: 20, warn: 30, error: 40 };
 
 function envLevel(): Level {
-  const raw = (process.env.P2P_LOG_LEVEL ?? "info").toLowerCase();
-  if (raw in ORDER) return raw as Level;
+  // Avoid touching `process.env` in the browser — `process` is not defined
+  // there and would throw at module load time. Fall back to "warn" so the
+  // browser console isn't spammed with info chatter from protocol modules.
+  let raw: string | undefined;
+  if (typeof globalThis !== "undefined" && typeof (globalThis as { process?: { env?: Record<string, string | undefined> } }).process !== "undefined") {
+    raw = (globalThis as { process: { env: Record<string, string | undefined> } }).process.env?.P2P_LOG_LEVEL;
+  }
+  const normalized = (raw ?? (typeof window === "undefined" ? "info" : "warn")).toLowerCase();
+  if (normalized in ORDER) return normalized as Level;
   return "info";
 }
 
