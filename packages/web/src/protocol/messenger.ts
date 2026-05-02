@@ -111,9 +111,12 @@ export class WebMessenger {
       },
     );
 
-    // Best-effort relay status polling — we don't have first-class connection
-    // events from SimplePool, so periodically check ensureRelay readyState.
-    setInterval(() => this.broadcastRelayStatus(), 5000);
+    // Eagerly connect to all relays so the user sees an honest 1/1 (or 3/3)
+    // status indicator straight away rather than 0/N for the first ~second.
+    void this.warmConnections().then(() => this.broadcastRelayStatus());
+
+    // Poll periodically so disconnects + reconnects are reflected.
+    setInterval(() => this.broadcastRelayStatus(), 3000);
     this.broadcastRelayStatus();
   }
 
@@ -295,24 +298,44 @@ export class WebMessenger {
   }
 
   private broadcastRelayStatus(): void {
-    // SimplePool exposes `ensureRelay`; check `connected` on each.
+    // Use SimplePool's public listConnectionStatus() — returns a Map<url,
+    // connected> covering relays the pool has *attempted* to connect.
     let open = 0;
-    for (const url of this.opts.relays) {
-      try {
-        const relay = (this.pool as unknown as { relays: Map<string, { connected: boolean }> })
-          .relays?.get(url);
-        if (relay?.connected) open += 1;
-      } catch {
-        // ignore probing errors
+    let probed = 0;
+    try {
+      const status = this.pool.listConnectionStatus();
+      for (const url of this.opts.relays) {
+        if (!status.has(url)) continue;
+        probed += 1;
+        if (status.get(url) === true) open += 1;
       }
+    } catch {
+      // listConnectionStatus may throw on older builds; fall back to 0.
     }
+    // If the pool hasn't been touched yet (no subscribe/publish has happened),
+    // listConnectionStatus is empty; report 0/total instead of 0/0.
+    const total = probed > 0 ? probed : this.opts.relays.length;
     for (const l of this.connectListeners) {
       try {
-        l(open, this.opts.relays.length);
+        l(open, total);
       } catch {
         // listener errors are isolated
       }
     }
+  }
+
+  /**
+   * Eagerly establish connections to every configured relay so the user sees
+   * an honest status indicator (open/total) before the first send. Without
+   * this the pool only connects lazily on subscribe/publish and the badge
+   * spends ~hundreds of ms reading 0/N.
+   */
+  private async warmConnections(): Promise<void> {
+    await Promise.allSettled(
+      this.opts.relays.map((url) =>
+        this.pool.ensureRelay(url).then((r) => r.connect()).catch(() => undefined),
+      ),
+    );
   }
 }
 
