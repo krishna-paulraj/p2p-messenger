@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "pnpm -F @p2p/web build",
+  "outputDirectory": "packages/web/dist",
+  "installCommand": "pnpm install --filter @p2p/web... --frozen-lockfile --ignore-scripts",
+  "framework": null,
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
