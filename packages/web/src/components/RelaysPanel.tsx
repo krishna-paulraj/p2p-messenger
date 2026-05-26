@@ -5,12 +5,6 @@ export type RelaysPanelProps = {
   onClose: () => void;
 };
 
-/**
- * Small popover for managing the relay set. Add new relay URLs (ws/wss),
- * remove existing ones. Persists to IndexedDB; the live messenger
- * connects/disconnects in real time so the badge updates within the next
- * status poll (≤ 3 s).
- */
 export function RelaysPanel({ onClose }: RelaysPanelProps) {
   const relays = useApp((s) => s.relayUrls);
   const addRelay = useApp((s) => s.addRelay);
@@ -44,13 +38,13 @@ export function RelaysPanel({ onClose }: RelaysPanelProps) {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-lg border border-slate-800 bg-slate-900 p-4 shadow-2xl"
+        className="w-full max-w-md rounded-2xl border border-ripple-border bg-ripple-surface p-5 shadow-2xl shadow-black/40"
       >
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-slate-200">relays</h3>
+          <h3 className="text-sm font-semibold text-zinc-200">relays</h3>
           <button
             onClick={onClose}
-            className="text-slate-500 transition hover:text-slate-200"
+            className="text-ripple-muted transition hover:text-zinc-200"
             aria-label="close"
           >
             ×
@@ -59,23 +53,23 @@ export function RelaysPanel({ onClose }: RelaysPanelProps) {
 
         <ul className="mb-3 space-y-1 text-xs">
           {relays.length === 0 && (
-            <li className="rounded bg-amber-500/10 px-2 py-1.5 text-amber-300">
+            <li className="rounded-xl bg-amber-500/10 px-3 py-2 text-amber-300">
               no relays configured — add one below to start receiving messages
             </li>
           )}
           {relays.map((url) => (
             <li
               key={url}
-              className="flex items-center justify-between rounded bg-slate-950/60 px-2 py-1.5 ring-1 ring-slate-800"
+              className="flex items-center justify-between rounded-xl bg-ripple-bg/60 px-3 py-2 ring-1 ring-ripple-border"
             >
-              <span className="truncate text-slate-300">{url}</span>
+              <span className="truncate text-zinc-300">{url}</span>
               <button
                 onClick={() => {
                   if (confirm(`remove relay ${url}?`)) {
                     void removeRelay(url);
                   }
                 }}
-                className="ml-2 shrink-0 rounded text-slate-500 transition hover:text-rose-400"
+                className="ml-2 shrink-0 rounded text-ripple-muted transition hover:text-rose-400"
                 aria-label={`remove ${url}`}
               >
                 remove
@@ -90,21 +84,21 @@ export function RelaysPanel({ onClose }: RelaysPanelProps) {
             onChange={(e) => setDraft(e.target.value)}
             placeholder="wss://relay.example or ws://localhost:7777"
             autoFocus
-            className="w-full rounded bg-slate-950 px-3 py-2 text-sm text-slate-100 ring-1 ring-slate-800 focus:outline-none focus:ring-cyan-500/50"
+            className="w-full rounded-xl bg-ripple-bg px-3.5 py-2.5 text-sm text-zinc-100 ring-1 ring-ripple-border focus:outline-none focus:ring-indigo-500/60"
           />
           {error && <div className="text-xs text-rose-400">{error}</div>}
           <button
             type="submit"
             disabled={busy || !draft.trim()}
-            className="w-full rounded bg-cyan-500/20 py-2 text-sm font-medium text-cyan-200 transition hover:bg-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-40"
+            className="w-full rounded-xl bg-indigo-500/15 py-2.5 text-sm font-medium text-indigo-200 ring-1 ring-indigo-500/30 transition hover:bg-indigo-500/25 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {busy ? "connecting…" : "+ add relay"}
           </button>
         </form>
 
-        <div className="mt-3 text-[11px] leading-relaxed text-slate-500">
-          relay URLs must start with <code className="text-slate-300">ws://</code> or{" "}
-          <code className="text-slate-300">wss://</code>. messages on each relay are
+        <div className="mt-3 text-[11px] leading-relaxed text-ripple-muted">
+          relay URLs must start with <code className="text-teal-300/90">ws://</code> or{" "}
+          <code className="text-teal-300/90">wss://</code>. messages on each relay are
           encrypted end-to-end (NIP-44 + Double Ratchet); the relay only forwards
           opaque ciphertext.
         </div>

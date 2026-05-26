@@ -22,15 +22,15 @@ export function Conversation() {
 
   if (!activePeer) {
     return (
-      <div className="flex flex-1 items-center justify-center px-6 text-slate-500">
+      <div className="flex flex-1 items-center justify-center px-6 text-ripple-muted">
         <div className="max-w-sm text-center">
-          <div className="mb-2 text-base font-semibold text-slate-200">
+          <div className="mb-2 text-base font-semibold text-zinc-200">
             select a contact
           </div>
-          <div className="text-sm leading-relaxed text-slate-500">
+          <div className="text-sm leading-relaxed text-ripple-muted">
             messages are end-to-end encrypted with NIP-44 + a Signal-style
-            Double Ratchet. WebRTC P2P data channels available with{" "}
-            <span className="text-slate-300">dial p2p</span> for low-latency
+            Double Ratchet. open a WebRTC channel with{" "}
+            <span className="text-teal-300/90">dial p2p</span> for low-latency
             messaging.
           </div>
         </div>
@@ -40,7 +40,7 @@ export function Conversation() {
 
   if (log.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-slate-600">
+      <div className="flex flex-1 items-center justify-center text-sm text-ripple-muted-2">
         no messages yet — say hi to {peerContact?.alias ?? "this peer"}
       </div>
     );
@@ -53,7 +53,7 @@ export function Conversation() {
     if (
       last &&
       last[0].direction === m.direction &&
-      m.ts - last[last.length - 1].ts < 5 * 60 // 5-min coalesce
+      m.ts - last[last.length - 1].ts < 5 * 60
     ) {
       last.push(m);
     } else {
@@ -69,7 +69,9 @@ export function Conversation() {
           const senderName = isSelf
             ? identity?.alias ?? "you"
             : peerContact?.alias ?? "peer";
-          const senderColor = isSelf ? "text-cyan-300" : peerColorClass(activePeer);
+          const senderColor = isSelf
+            ? "text-indigo-300"
+            : peerColorClass(activePeer);
           return (
             <div
               key={gi}
@@ -81,7 +83,7 @@ export function Conversation() {
                 }`}
               >
                 <span className={`font-semibold ${senderColor}`}>{senderName}</span>
-                <span className="text-slate-600">
+                <span className="text-ripple-muted-2">
                   {fmtTime(group[group.length - 1].ts)}
                 </span>
               </div>
@@ -92,24 +94,36 @@ export function Conversation() {
                     return (
                       <div
                         key={mi}
-                        className="self-center rounded-full border border-slate-800 bg-slate-900/60 px-3 py-0.5 text-[11px] text-slate-500"
+                        className="self-center rounded-full border border-ripple-border bg-ripple-surface/60 px-3 py-0.5 text-[11px] text-ripple-muted"
                       >
                         {m.text.replace(/^\[|\]$/g, "")}
                       </div>
                     );
                   }
+                  const isLast = mi === group.length - 1;
+                  const tailClass = isSelf
+                    ? isLast
+                      ? "rounded-br-md"
+                      : ""
+                    : isLast
+                      ? "rounded-bl-md"
+                      : "";
                   return (
                     <div
                       key={mi}
                       className={`whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-sm ${
                         isSelf
-                          ? "bg-cyan-500/10 text-slate-100 ring-1 ring-cyan-500/30"
-                          : "bg-slate-800/70 text-slate-100 ring-1 ring-slate-700/50"
-                      }`}
+                          ? "bg-indigo-500 text-white shadow-indigo-500/10"
+                          : "bg-ripple-surface-2 text-zinc-100 ring-1 ring-ripple-border"
+                      } ${tailClass}`}
                     >
                       {m.text}
                       {m.source === "relay" && (
-                        <span className="ml-2 text-[10px] text-slate-500">
+                        <span
+                          className={`ml-2 text-[10px] ${
+                            isSelf ? "text-indigo-200/80" : "text-ripple-muted"
+                          }`}
+                        >
                           via relay
                         </span>
                       )}

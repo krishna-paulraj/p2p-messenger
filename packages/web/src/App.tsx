@@ -40,7 +40,7 @@ export function App() {
       <Header />
       <div className="flex flex-1 overflow-hidden">
         <ContactList />
-        <main className="flex flex-1 flex-col bg-slate-950">
+        <main className="flex flex-1 flex-col bg-ripple-bg">
           <ConversationHeader />
           <Conversation />
           <Composer />

@@ -18,7 +18,6 @@ export function ContactList() {
   const [error, setError] = useState<string | null>(null);
 
   const list = Object.values(contacts).sort((a, b) => {
-    // Recently-active conversations first, then alphabetical fallback.
     const aLast = messages[a.pubkey]?.[messages[a.pubkey].length - 1]?.ts ?? 0;
     const bLast = messages[b.pubkey]?.[messages[b.pubkey].length - 1]?.ts ?? 0;
     if (aLast !== bLast) return bLast - aLast;
@@ -43,38 +42,38 @@ export function ContactList() {
   }
 
   return (
-    <aside className="flex h-full w-72 shrink-0 flex-col border-r border-slate-800/80 bg-slate-900/30">
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-slate-800/80 px-4">
-        <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+    <aside className="flex h-full w-72 shrink-0 flex-col border-r border-ripple-border bg-ripple-surface/30">
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-ripple-border px-4">
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ripple-muted">
           contacts
         </h2>
         <button
           onClick={() => setShowAdd((v) => !v)}
-          className="rounded-md bg-cyan-500/10 px-2 py-0.5 text-[11px] font-medium text-cyan-300 transition hover:bg-cyan-500/20"
+          className="rounded-full bg-indigo-500/10 px-2.5 py-0.5 text-[11px] font-medium text-indigo-300 transition hover:bg-indigo-500/20"
         >
           {showAdd ? "× cancel" : "+ add"}
         </button>
       </div>
 
       {showAdd && (
-        <form onSubmit={handleAdd} className="space-y-2 border-b border-slate-800/80 p-3">
+        <form onSubmit={handleAdd} className="space-y-2 border-b border-ripple-border p-3">
           <input
             value={aliasInput}
             onChange={(e) => setAliasInput(e.target.value)}
             placeholder="alias (e.g. bob)"
-            className="w-full rounded-md bg-slate-950 px-2.5 py-1.5 text-sm text-slate-100 ring-1 ring-slate-800 placeholder:text-slate-600 focus:outline-none focus:ring-cyan-500/50"
+            className="w-full rounded-xl bg-ripple-bg px-3 py-1.5 text-sm text-zinc-100 ring-1 ring-ripple-border placeholder:text-ripple-muted-2 focus:outline-none focus:ring-indigo-500/60"
             autoFocus
           />
           <input
             value={refInput}
             onChange={(e) => setRefInput(e.target.value)}
             placeholder="npub… or hex pubkey"
-            className="w-full rounded-md bg-slate-950 px-2.5 py-1.5 font-mono text-[11px] text-slate-100 ring-1 ring-slate-800 placeholder:text-slate-600 focus:outline-none focus:ring-cyan-500/50"
+            className="w-full rounded-xl bg-ripple-bg px-3 py-1.5 font-mono text-[11px] text-zinc-100 ring-1 ring-ripple-border placeholder:text-ripple-muted-2 focus:outline-none focus:ring-indigo-500/60"
           />
           {error && <div className="text-xs text-rose-400">{error}</div>}
           <button
             type="submit"
-            className="w-full rounded-md bg-cyan-500/15 py-1.5 text-sm font-medium text-cyan-200 transition hover:bg-cyan-500/25"
+            className="w-full rounded-xl bg-indigo-500/15 py-1.5 text-sm font-medium text-indigo-200 transition hover:bg-indigo-500/25"
           >
             add contact
           </button>
@@ -83,10 +82,10 @@ export function ContactList() {
 
       <div className="flex-1 overflow-y-auto py-1">
         {list.length === 0 && !showAdd && (
-          <div className="px-4 py-8 text-center text-xs leading-relaxed text-slate-500">
+          <div className="px-4 py-8 text-center text-xs leading-relaxed text-ripple-muted">
             no contacts yet
             <br />
-            click <span className="text-slate-300">+ add</span> above to start
+            click <span className="text-zinc-300">+ add</span> to start a conversation
           </div>
         )}
         {list.map((c) => {
@@ -99,33 +98,27 @@ export function ContactList() {
             <button
               key={c.pubkey}
               onClick={() => setActive(c.pubkey)}
-              className={`group relative flex w-full items-center gap-3 px-3 py-2 text-left transition ${
+              className={`group relative mx-2 my-0.5 flex w-[calc(100%-1rem)] items-center gap-3 rounded-xl px-2.5 py-2 text-left transition ${
                 isActive
-                  ? "bg-slate-800/70"
-                  : "hover:bg-slate-800/40"
+                  ? "bg-indigo-500/10 ring-1 ring-indigo-500/30"
+                  : "hover:bg-ripple-surface-2/40"
               }`}
             >
-              {/* active peer indicator stripe on the left */}
-              {isActive && (
-                <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-r bg-cyan-400" />
-              )}
-
               <div className="relative shrink-0">
                 <div
-                  className={`avatar-gradient flex h-9 w-9 items-center justify-center rounded-full ring-1 ring-slate-700/80 ${peerColorClass(c.pubkey)} text-sm font-semibold`}
+                  className={`avatar-gradient flex h-9 w-9 items-center justify-center rounded-full ring-1 ring-ripple-border-strong ${peerColorClass(c.pubkey)} text-sm font-semibold`}
                 >
                   {c.alias.slice(0, 1).toUpperCase()}
                 </div>
-                {/* Connection dot at lower-right of avatar */}
                 {isP2P && (
                   <span
-                    className="absolute -right-0.5 -bottom-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-slate-900"
+                    className="absolute -right-0.5 -bottom-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-ripple-surface"
                     title="P2P connected"
                   />
                 )}
                 {!isP2P && isDialing && (
                   <span
-                    className="absolute -right-0.5 -bottom-0.5 h-2.5 w-2.5 animate-pulse rounded-full bg-amber-400 ring-2 ring-slate-900"
+                    className="absolute -right-0.5 -bottom-0.5 h-2.5 w-2.5 animate-pulse rounded-full bg-amber-400 ring-2 ring-ripple-surface"
                     title="dialing…"
                   />
                 )}
@@ -135,18 +128,18 @@ export function ContactList() {
                 <div className="flex items-center justify-between gap-2">
                   <span
                     className={`truncate text-sm font-medium ${
-                      isActive ? "text-slate-100" : "text-slate-200"
+                      isActive ? "text-zinc-50" : "text-zinc-200"
                     }`}
                   >
                     {c.alias}
                   </span>
                   {lastMsg && (
-                    <span className="shrink-0 text-[10px] text-slate-600">
+                    <span className="shrink-0 text-[10px] text-ripple-muted-2">
                       {fmtTimeShort(lastMsg.ts)}
                     </span>
                   )}
                 </div>
-                <div className="truncate text-xs text-slate-500">
+                <div className="truncate text-xs text-ripple-muted">
                   {lastMsg?.text ?? shortNpub(c.npub)}
                 </div>
               </div>
@@ -156,7 +149,7 @@ export function ContactList() {
                   e.stopPropagation();
                   if (confirm(`remove ${c.alias}?`)) void removeContact(c.alias);
                 }}
-                className="shrink-0 rounded text-xs text-slate-600 opacity-0 transition group-hover:opacity-100 hover:text-rose-400"
+                className="shrink-0 rounded text-xs text-ripple-muted-2 opacity-0 transition group-hover:opacity-100 hover:text-rose-400"
                 aria-label={`remove ${c.alias}`}
               >
                 ×

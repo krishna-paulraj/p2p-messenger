@@ -47,7 +47,7 @@ export function CopyButton({ value, label = "copy", className }: CopyButtonProps
       ? "text-emerald-400"
       : state === "err"
         ? "text-rose-400"
-        : "text-slate-500 hover:text-slate-200";
+        : "text-ripple-muted hover:text-teal-300";
 
   return (
     <button

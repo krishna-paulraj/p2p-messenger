@@ -23,16 +23,24 @@ export default {
         ],
       },
       colors: {
-        // Subtle accent colors for peer name hashing — readable on slate-950.
+        ripple: {
+          bg: "#0c0c14",
+          surface: "#15151f",
+          "surface-2": "#1c1c28",
+          border: "#262635",
+          "border-strong": "#33334a",
+          muted: "#6b6b85",
+          "muted-2": "#4a4a60",
+        },
         peer: {
-          1: "#67e8f9", // cyan-300
-          2: "#fda4af", // rose-300
-          3: "#fcd34d", // amber-300
-          4: "#86efac", // green-300
-          5: "#a5b4fc", // indigo-300
-          6: "#fdba74", // orange-300
-          7: "#f9a8d4", // pink-300
-          8: "#6ee7b7", // emerald-300
+          1: "#fda4af",
+          2: "#fdba74",
+          3: "#fcd34d",
+          4: "#a3e635",
+          5: "#5eead4",
+          6: "#93c5fd",
+          7: "#c4b5fd",
+          8: "#f0abfc",
         },
       },
       keyframes: {

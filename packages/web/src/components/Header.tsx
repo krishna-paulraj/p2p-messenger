@@ -15,31 +15,26 @@ export function Header() {
   const allRelaysOk = relayOpen === relayTotal && relayTotal > 0;
 
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between border-b border-slate-800/80 bg-slate-900/60 px-4">
+    <header className="flex h-12 shrink-0 items-center justify-between border-b border-ripple-border bg-ripple-surface/70 px-4">
       <div className="flex items-center gap-2.5">
-        <div className="relative flex h-2.5 w-2.5 shrink-0">
-          <span
-            className={`absolute inline-flex h-full w-full rounded-full ${
-              allRelaysOk ? "animate-pulse bg-cyan-400" : "bg-slate-600"
-            } opacity-60`}
-          />
-          <span
-            className={`relative inline-flex h-2.5 w-2.5 rounded-full ${
-              allRelaysOk ? "bg-cyan-400" : "bg-slate-500"
-            }`}
-          />
+        <div className="relative h-7 w-7 shrink-0">
+          <span className="absolute inset-0 rounded-full ring-2 ring-indigo-500/70" />
+          <span className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-indigo-400" />
+          {allRelaysOk && (
+            <span className="absolute inset-0 rounded-full ring-2 ring-teal-400/60 animate-ripple-ping" />
+          )}
         </div>
-        <div className="text-sm font-semibold tracking-tight text-slate-100">
-          p2p-messenger
+        <div className="text-[15px] font-semibold tracking-tight text-zinc-100">
+          Ripple
         </div>
       </div>
 
       <div className="flex items-center gap-3 text-xs">
         {identity && (
-          <div className="hidden items-center gap-1.5 rounded-md bg-slate-800/60 px-2.5 py-1 ring-1 ring-slate-700/60 md:flex">
-            <span className="text-slate-200">{identity.alias}</span>
-            <span className="text-slate-600">·</span>
-            <span className="font-mono text-[11px] text-slate-400">
+          <div className="hidden items-center gap-1.5 rounded-full bg-ripple-surface-2/60 px-3 py-1 ring-1 ring-ripple-border md:flex">
+            <span className="text-zinc-200">{identity.alias}</span>
+            <span className="text-ripple-muted-2">·</span>
+            <span className="font-mono text-[10.5px] text-zinc-400">
               {shortNpub(identity.npub)}
             </span>
             <CopyButton value={identity.npub} label="copy npub" />
@@ -48,16 +43,16 @@ export function Header() {
 
         <button
           onClick={() => setShowRelays(true)}
-          className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-slate-400 transition hover:bg-slate-800/60 hover:text-slate-100"
+          className="flex items-center gap-1.5 rounded-full px-2.5 py-1 text-zinc-400 transition hover:bg-ripple-surface-2/60 hover:text-zinc-100"
           title="manage relays"
         >
           <span
             className={`h-1.5 w-1.5 rounded-full ${
               allRelaysOk
-                ? "bg-emerald-400"
+                ? "bg-teal-400"
                 : relayOpen > 0
                   ? "bg-amber-400"
-                  : "bg-slate-600"
+                  : "bg-ripple-muted-2"
             }`}
           />
           <span>
@@ -68,7 +63,7 @@ export function Header() {
         {identity && (
           <button
             onClick={() => setShowSettings(true)}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-800/60 hover:text-slate-100"
+            className="flex h-7 w-7 items-center justify-center rounded-full text-zinc-400 transition hover:bg-ripple-surface-2/60 hover:text-zinc-100"
             title="settings — view identity, copy nsec, reset"
             aria-label="settings"
           >
